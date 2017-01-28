@@ -1,4 +1,24 @@
 extern crate image;
+extern crate cgmath;
+
+use cgmath::{
+    InnerSpace,
+    SquareMatrix,
+    vec2 as v2,
+    vec3 as v3,
+    vec4 as v4,
+    Vector2,
+    Vector3,
+    Vector4,
+    Matrix3,
+    Matrix4,
+};
+
+type V2 = Vector2<f64>;
+type V3 = Vector3<f64>;
+type V4 = Vector4<f64>;
+type M3 = Matrix3<f64>;
+type M4 = Matrix4<f64>;
 
 fn main() {
     let obj = ::std::fs::File::open("../../tinyrenderer/obj/african_head/african_head.obj");
@@ -14,18 +34,45 @@ fn main() {
 }
 
 fn barycentric(tri: &Vec<V3>, p: &V2) -> V3 {
-    let u = v3(tri[2].x()-tri[0].x(), tri[1].x()-tri[0].x(), tri[0].x()-p.x())
-        .cross(v3(tri[2].y()-tri[0].y(), tri[1].y()-tri[0].y(), tri[0].y()-p.y()));
-    if u.z().abs() < 1. { return v3(-1.,1.,1.); }
-    v3(1.-(u.x()+u.y())/u.z(), u.y()/u.z(), u.x()/u.z())
+    let u = v3(
+        tri[2].x - tri[0].x,
+        tri[1].x - tri[0].x,
+        tri[0].x - p.x
+    ).cross(v3(
+        tri[2].y - tri[0].y,
+        tri[1].y - tri[0].y,
+        tri[0].y - p.y
+    ));
+
+    if u.z.abs() < 1. {
+        v3(-1., 1., 1.)
+    } else {
+        v3(1. - (u.x+u.y) / u.z, u.y / u.z, u.x / u.z)
+    }
 }
 
 fn triangle(image: &mut Image, z_buf: &mut Vec<f64>, face: &Face, model: &Model) {
     let light_dir = v3(0.,0.,1.);
-    let points: Vec<V3> = face.verts.iter().map(|p| {
-        v3((p.x() + 1.) * image.width() as f64 /2.,
-         (p.y() + 1.) * image.height() as f64 /2., p.z())
-    }).collect();
+    let camera_distance = 6.;
+    let mut camera_matrix = M4::identity();
+    camera_matrix[2][3] = -1./camera_distance;
+
+    let points: Vec<V3> = face.verts.iter()
+        .map(|p| {
+            let p = camera_matrix * p.extend(1.);
+            v3(p.x / p.w, p.y / p.w, p.z / p.w)
+        })
+        .map(|p| v3(
+            (p.x + 1.) * image.width() as f64 /2.,
+            (p.y + 1.) * image.height() as f64 /2.,
+            p.z
+        )).collect();
+
+    let points_z = v3(
+        points[0].z,
+        points[1].z,
+        points[2].z,
+    );
 
     let light = v3(
         face.norms[0].dot(light_dir),
@@ -33,69 +80,100 @@ fn triangle(image: &mut Image, z_buf: &mut Vec<f64>, face: &Face, model: &Model)
         face.norms[2].dot(light_dir)
     );
 
-    let (tex_x, tex_y) = {
-        let x = v3(
-            face.texs[0].x(),
-            face.texs[1].x(),
-            face.texs[2].x()
-        );
+    let tex_x = v3(
+        face.texs[0].x,
+        face.texs[1].x,
+        face.texs[2].x
+    );
 
-        let y = v3(
-            face.texs[0].y(),
-            face.texs[1].y(),
-            face.texs[2].y(),
-        );
+    let tex_y = v3(
+        face.texs[0].y,
+        face.texs[1].y,
+        face.texs[2].y,
+    );
 
-        (x,y)
+    let (bbmin, bbmax) = {
+        let clamp = v2((image.width()-1) as f64, (image.height()-1) as f64);
+        let range  = (v2(::std::f64::MAX, ::std::f64::MAX), v2(::std::f64::MIN, ::std::f64::MIN));
+        let (min, max) = points.iter().fold(range, |mut a, p|{
+            if p.x < a.0.x { a.0.x = p.x; }
+            if p.y < a.0.y { a.0.y = p.y; }
+            if p.x > a.1.x { a.1.x = p.x; }
+            if p.y > a.1.y { a.1.y = p.y; }
+            a
+        });
+        (
+            v2((0_f64).max(min.x.floor()), (0_f64).max(min.y.floor())),
+            v2(clamp.x.min(max.x.floor()), clamp.y.min(max.y.floor()))
+        )
     };
 
-    let mut bbmin = v2(::std::f64::MAX, ::std::f64::MAX);
-    let mut bbmax = v2(::std::f64::MIN, ::std::f64::MIN);
-    let clamp = v2((image.width()-1) as f64, (image.height()-1) as f64);
+    for p in V2Box::new(bbmin, bbmax) {
+        let screen = barycentric(&points, &p);
+        if screen.x < 0. || screen.y < 0. || screen.z < 0. { continue; }
 
-    for i in 0..3 {
-        for j in 0..2 {
-            bbmin[j] = (0.0 as f64).max(bbmin[j].min(points[i][j])).floor();
-            bbmax[j] = clamp[j].min(bbmax[j].max(points[i][j])).floor();
-        }
-    }
+        let image_x = p.x as u32;
+        let image_y = p.y as u32;
+        let ind = (image_y * image.width() + image_x) as usize;
 
-    let mut p = v2(bbmin.x(), bbmin.y());
-    while p.x() <= bbmax.x() {
-        while p.y() <= bbmax.y() {
-            let screen = barycentric(&points, &p);
-            if screen.x() < 0. || screen.y() < 0. || screen.z() < 0. {
-                p[1] = p[1] + 1.0;
-                continue;
-            }
-            let mut z = 0.0;
-            for i in 0..3 {
-                z += points[i].z() * screen[i];
-            }
-
-            let screen_x = p.x() as u32;
-            let screen_y = p.y() as u32;
-            let ind = (screen_y * image.width() + screen_x) as usize;
-
-            if z_buf[ind] < z {
-                z_buf[ind] = z;
+        let z = points_z.dot(screen);
+        if z_buf[ind] < z {
+            z_buf[ind] = z;
+            let intensity = light.dot(screen);
+            if intensity > 0. {
                 let x = tex_x.dot(screen);
                 let y = tex_y.dot(screen);
-                let c = model.texture.get_f(x,y);
-                let intensity = (light.dot(screen) + 1.) / 2.;
-                image.set(screen_x, screen_y, Color::from_rgb(
-                    (c.r() as f64 * intensity) as u8,
-                    (c.g() as f64 * intensity) as u8,
-                    (c.b() as f64  * intensity) as u8
-                ));
+                let c: V3 = model.texture.get_f(x,y).into();
+                image.set(image_x, image_y, (c * intensity).into());
             }
-
-            p[1] = p[1] + 1.0;
         }
-        p[0] = p[0] + 1.0;
-        p[1] = bbmin.y();
     }
 }
+
+struct V2Box {
+    start: V2,
+    end: V2,
+    cur: V2,
+    done: bool,
+}
+
+impl V2Box {
+    fn new(start: V2, end: V2) -> V2Box {
+        let mut cur = start;
+        let mut done = false;
+        if cur.y > end.y {
+            cur.y = start.y;
+            cur.x += 1.;
+            if cur.x >  end.x {
+                done = true;
+            }
+        }
+        V2Box {
+            start: start,
+            end: end,
+            cur: cur,
+            done: done,
+        }
+    }
+}
+
+impl Iterator for V2Box {
+    type Item = V2;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.done { return None; }
+        let next = self.cur;
+        self.cur.y += 1.;
+        if self.cur.y > self.end.y {
+            self.cur.y = self.start.y;
+            self.cur.x += 1.;
+            if self.cur.x >  self.end.x {
+                self.done = true;
+            }
+        }
+        Some(next)
+    }
+}
+
 
 struct Image {
     pixels: Vec<Color>,
@@ -116,10 +194,8 @@ impl Image {
     }
 
     fn from_file<P: AsRef<::std::path::Path>>(path: P) -> Image {
-        use image::imageops::flip_vertical;
         use image::Pixel;
         let img = image::open(path).unwrap().to_rgba();
-        //let img = flip_vertical(&img);
         let (width, height) = img.dimensions();
         let mut pixels = Vec::with_capacity((width * height) as usize);
         for y in 0..height {
@@ -249,249 +325,28 @@ impl Color {
     fn r(&self) -> u8 { self.red }
     fn g(&self) -> u8 { self.green }
     fn b(&self) -> u8 { self.blue }
+    fn a_f(&self) -> f64 { self.alpha as f64 / 255.0 }
+    fn r_f(&self) -> f64 { self.red as f64 / 255.0 }
+    fn g_f(&self) -> f64 { self.green as f64 / 255.0 }
+    fn b_f(&self) -> f64 { self.blue as f64 / 255.0 }
 }
 
-fn v3(x: f64, y: f64, z: f64) -> V3 {
-    V3::new(x,y,z)
+impl From<Color> for V3 {
+    fn from(c: Color) -> V3 { v3(c.r_f(), c.g_f(), c.b_f()) }
 }
 
-#[derive(Clone, Copy, Debug)]
-struct V3 {
-    elems: [f64;3],
-}
-impl V3 {
-    fn new(x: f64, y: f64, z: f64) -> V3 {
-        V3 {
-            elems: [x, y, z]
-        }
-    }
-    fn x(&self) -> f64 { self.elems[0] }
-    fn y(&self) -> f64 { self.elems[1] }
-    fn z(&self) -> f64 { self.elems[2] }
-
-    fn magnitude(self) -> f64 {
-        self.elems.iter().map(|i| i*i).sum::<f64>().sqrt()
-    }
-
-    fn normalize(self) -> V3 {
-        let mag = self.magnitude();
-        V3::new(self.x()/mag, self.y()/mag, self.z()/mag)
-    }
-
-    fn dot(self, other: V3) -> f64 {
-        self.elems.iter().zip(other.elems.iter()).map(|(a,b)| a*b).sum()
-    }
-
-    fn cross(self, other: V3) -> V3 {
-        V3::new((self.y()*other.z())-(self.z()*other.y()),
-               (self.z()*other.x())-(self.x()*other.z()),
-               (self.x()*other.y()-(self.y()*other.x())))
-    }
+impl From<Color> for V4 {
+    fn from(c: Color) -> V4 { v4(c.r_f(), c.g_f(), c.b_f(), c.a_f()) }
 }
 
-impl ::std::ops::Index<usize> for V3 {
-    type Output = f64;
-    fn index(&self, index: usize) -> &f64 {
-        self.elems.index(index)
-    }
+impl From<V3> for Color {
+    fn from(v: V3) -> Color { Color::from_rgb_f(v.x, v.y, v.z) }
 }
 
-impl ::std::ops::IndexMut<usize> for V3 {
-    fn index_mut(&mut self, index: usize) -> &mut f64 {
-        self.elems.index_mut(index)
-    }
+impl From<V4> for Color {
+    fn from(v: V4) -> Color { Color::from_argb_f(v.w, v.x, v.y, v.z) }
 }
 
-impl ::std::iter::FromIterator<f64> for V3 {
-    fn from_iter<T>(iter: T) -> V3 where T: IntoIterator<Item=f64> {
-        let mut iter = iter.into_iter();
-        V3::new(iter.next().unwrap(), iter.next().unwrap(), iter.next().unwrap())
-    }
-}
-
-impl ::std::convert::From<f64> for V3 {
-    fn from(item: f64) -> V3 {
-        V3::new(item, item, item)
-    }
-}
-
-impl ::std::ops::Add for V3 {
-    type Output = V3;
-    fn add(self, other: V3) -> V3 {
-        self.elems.iter().zip(other.elems.iter()).map(|(a,b)| a+b).collect()
-    }
-}
-
-impl ::std::ops::Sub for V3 {
-    type Output = V3;
-    fn sub(self, other: V3) -> V3 {
-        self.elems.iter().zip(other.elems.iter()).map(|(a,b)| a-b).collect()
-    }
-}
-
-impl ::std::ops::Mul for V3 {
-    type Output = V3;
-    fn mul(self, other: V3) -> V3 {
-        self.elems.iter().zip(other.elems.iter()).map(|(a,b)| a*b).collect()
-    }
-}
-
-impl ::std::ops::Div for V3 {
-    type Output = V3;
-    fn div(self, other: V3) -> V3 {
-        self.elems.iter().zip(other.elems.iter()).map(|(a,b)| a/b).collect()
-    }
-}
-
-fn v2(x: f64, y: f64) -> V2 {
-    V2::new(x,y)
-}
-
-#[derive(Clone, Copy, Debug)]
-struct V2 {
-    elems: [f64;2],
-}
-impl V2 {
-    fn new(x: f64, y: f64) -> V2 {
-        V2 {
-            elems: [x, y]
-        }
-    }
-    fn x(&self) -> f64 { self.elems[0] }
-    fn y(&self) -> f64 { self.elems[1] }
-
-    fn magnitude(self) -> f64 {
-        self.elems.iter().map(|i| i*i).sum::<f64>().sqrt()
-    }
-
-    fn normalize(self) -> V2 {
-        let mag = self.magnitude();
-        V2::new(self.x()/mag, self.y()/mag)
-    }
-
-    fn dot(self, other: V2) -> f64 {
-        self.elems.iter().zip(other.elems.iter()).map(|(a,b)| a*b).sum()
-    }
-}
-
-impl ::std::iter::FromIterator<f64> for V2 {
-    fn from_iter<T>(iter: T) -> V2 where T: IntoIterator<Item=f64> {
-        let mut iter = iter.into_iter();
-        V2::new(iter.next().unwrap(), iter.next().unwrap())
-    }
-}
-
-impl ::std::convert::From<f64> for V2 {
-    fn from(item: f64) -> V2 {
-        V2::new(item, item)
-    }
-}
-
-impl ::std::convert::From<V3> for V2 {
-    fn from(item: V3) -> V2 {
-        V2::new(item.x(), item.y())
-    }
-}
-
-impl ::std::ops::Index<usize> for V2 {
-    type Output = f64;
-    fn index(&self, index: usize) -> &f64 {
-        self.elems.index(index)
-    }
-}
-
-impl ::std::ops::IndexMut<usize> for V2 {
-    fn index_mut(&mut self, index: usize) -> &mut f64 {
-        self.elems.index_mut(index)
-    }
-}
-
-impl ::std::ops::Add for V2 {
-    type Output = V2;
-    fn add(self, other: V2) -> V2 {
-        self.elems.iter().zip(other.elems.iter()).map(|(a,b)| a+b).collect()
-    }
-}
-
-impl ::std::ops::Sub for V2 {
-    type Output = V2;
-    fn sub(self, other: V2) -> V2 {
-        self.elems.iter().zip(other.elems.iter()).map(|(a,b)| a-b).collect()
-    }
-}
-
-impl ::std::ops::Mul for V2 {
-    type Output = V2;
-    fn mul(self, other: V2) -> V2 {
-        self.elems.iter().zip(other.elems.iter()).map(|(a,b)| a*b).collect()
-    }
-}
-
-impl ::std::ops::Div for V2 {
-    type Output = V2;
-    fn div(self, other: V2) -> V2 {
-        self.elems.iter().zip(other.elems.iter()).map(|(a,b)| a/b).collect()
-    }
-}
-
-fn v2i(x: i32, y: i32) -> V2i {
-    V2i::new(x,y)
-}
-
-#[derive(Clone, Copy, Debug)]
-struct V2i {
-    elems: [i32;2],
-}
-impl V2i {
-    fn new(x: i32, y: i32) -> V2i {
-        V2i {
-            elems: [x, y]
-        }
-    }
-    fn x(&self) -> i32 { self.elems[0] }
-    fn y(&self) -> i32 { self.elems[1] }
-}
-
-impl ::std::iter::FromIterator<i32> for V2i {
-    fn from_iter<T>(iter: T) -> V2i where T: IntoIterator<Item=i32> {
-        let mut iter = iter.into_iter();
-        V2i::new(iter.next().unwrap(), iter.next().unwrap())
-    }
-}
-
-impl ::std::convert::From<i32> for V2i {
-    fn from(item: i32) -> V2i {
-        V2i::new(item, item)
-    }
-}
-
-impl ::std::ops::Add for V2i {
-    type Output = V2i;
-    fn add(self, other: V2i) -> V2i {
-        self.elems.iter().zip(other.elems.iter()).map(|(a,b)| a+b).collect()
-    }
-}
-
-impl ::std::ops::Sub for V2i {
-    type Output = V2i;
-    fn sub(self, other: V2i) -> V2i {
-        self.elems.iter().zip(other.elems.iter()).map(|(a,b)| a-b).collect()
-    }
-}
-
-impl ::std::ops::Mul for V2i {
-    type Output = V2i;
-    fn mul(self, other: V2i) -> V2i {
-        self.elems.iter().zip(other.elems.iter()).map(|(a,b)| a*b).collect()
-    }
-}
-
-impl ::std::ops::Div for V2i {
-    type Output = V2i;
-    fn div(self, other: V2i) -> V2i {
-        self.elems.iter().zip(other.elems.iter()).map(|(a,b)| a/b).collect()
-    }
-}
 
 struct Model {
     texture: Image,
@@ -510,7 +365,7 @@ impl Model {
             Invalid,
         }
 
-        let mut reader = BufReader::new(read);
+        let reader = BufReader::new(read);
         let (verts, texs, norms, faces, valid) = reader.lines().filter_map(|l| {
             let l = l.unwrap();
             let parts: Vec<&str> = l.split(' ').filter(|x| x.len() > 0).collect();
@@ -615,6 +470,10 @@ impl Model {
 
             col
         });
+
+        if !valid {
+            panic!("Invalid .obj file");
+        }
 
         let faces = faces.iter().map(|f| {
             let (v,t,n) = f.iter().fold((Vec::new(), Vec::new(), Vec::new()), |mut a, t| {
