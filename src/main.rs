@@ -10,14 +10,12 @@ use cgmath::{
     Vector2,
     Vector3,
     Vector4,
-    Matrix3,
     Matrix4,
 };
 
 type V2 = Vector2<f64>;
 type V3 = Vector3<f64>;
 type V4 = Vector4<f64>;
-type M3 = Matrix3<f64>;
 type M4 = Matrix4<f64>;
 
 fn main() {
@@ -26,58 +24,79 @@ fn main() {
     let (width, height) = (1024, 1024);
     let mut image = Image::new(width, height);
     let mut z_buf = vec![::std::f64::MIN; (width*height) as usize];
+
+    let eye = v3(1., 1., 3.);
+    let center = v3(0., 0., 0.);
+    let up = v3(0., 1., 0.);
+
+    let viewport = viewport(0, 0, width, height);
+    let projection = projection((eye - center).magnitude());
+    let modelview = modelview(&eye, &center, &up);
+
+    let transform = viewport * projection * modelview;
+
+    let light_dir = v3(1.,1.,1.).normalize();
+
     for face in model.faces.iter() {
-        triangle(&mut image, &mut z_buf, &face, &model);
+        triangle(&mut image, &mut z_buf, &face, &model, &transform, light_dir);
     }
 
     let _ = image.write("image.png");
 }
 
-fn barycentric(tri: &Vec<V3>, p: &V2) -> V3 {
-    let u = v3(
-        tri[2].x - tri[0].x,
-        tri[1].x - tri[0].x,
-        tri[0].x - p.x
-    ).cross(v3(
-        tri[2].y - tri[0].y,
-        tri[1].y - tri[0].y,
-        tri[0].y - p.y
-    ));
-
-    if u.z.abs() < 1. {
-        v3(-1., 1., 1.)
-    } else {
-        v3(1. - (u.x+u.y) / u.z, u.y / u.z, u.x / u.z)
-    }
+fn matrix_transform(v: &V3, m: &M4) -> V3 {
+    let v = m * v.extend(1.);
+    v3(v.x / v.w, v.y / v.w, v.z / v.w)
 }
 
-fn triangle(image: &mut Image, z_buf: &mut Vec<f64>, face: &Face, model: &Model) {
-    let light_dir = v3(0.,0.,1.);
-    let camera_distance = 6.;
-    let mut camera_matrix = M4::identity();
-    camera_matrix[2][3] = -1./camera_distance;
+fn viewport(x: u32, y: u32, width: u32, height: u32) -> M4 {
+    let (width, height, x, y) = (width as f64, height as f64, x as f64, y as f64);
+    let mut viewport = M4::identity();
+    viewport[0][0] = width / 2.;
+    viewport[1][1] = height / 2.;
+    viewport[3][0] = width / 2. + x;
+    viewport[3][1] = height / 2. + y;
 
+    viewport
+}
+
+fn projection(camera_distance: f64) -> M4 {
+    let mut projection = M4::identity();
+    projection[2][3] = -1. / camera_distance;
+
+    projection
+}
+
+fn modelview(eye: &V3, center: &V3, up: &V3) -> M4 {
+    let z = (eye - center).normalize();
+    let x = up.cross(z).normalize();
+    let y = z.cross(x).normalize();
+    let mut modelview = M4::identity();
+    for i in 0..3 {
+        modelview[i][0] = x[i];
+        modelview[i][1] = y[i];
+        modelview[i][2] = z[i];
+        modelview[3][i] = -center[i];
+    }
+
+    modelview
+}
+
+fn triangle(image: &mut Image, z_buf: &mut Vec<f64>, face: &Face, model: &Model, transform: &M4, light_dir: V3) {
     let points: Vec<V3> = face.verts.iter()
-        .map(|p| {
-            let p = camera_matrix * p.extend(1.);
-            v3(p.x / p.w, p.y / p.w, p.z / p.w)
-        })
-        .map(|p| v3(
-            (p.x + 1.) * image.width() as f64 /2.,
-            (p.y + 1.) * image.height() as f64 /2.,
-            p.z
-        )).collect();
-
-    let points_z = v3(
-        points[0].z,
-        points[1].z,
-        points[2].z,
-    );
+        .map(|p| matrix_transform(&p, &transform))
+        .collect();
 
     let light = v3(
         face.norms[0].dot(light_dir),
         face.norms[1].dot(light_dir),
         face.norms[2].dot(light_dir)
+    );
+
+    let points_z = v3(
+        points[0].z,
+        points[1].z,
+        points[2].z,
     );
 
     let tex_x = v3(
@@ -119,14 +138,30 @@ fn triangle(image: &mut Image, z_buf: &mut Vec<f64>, face: &Face, model: &Model)
         let z = points_z.dot(screen);
         if z_buf[ind] < z {
             z_buf[ind] = z;
-            let intensity = light.dot(screen);
-            if intensity > 0. {
-                let x = tex_x.dot(screen);
-                let y = tex_y.dot(screen);
-                let c: V3 = model.texture.get_f(x,y).into();
-                image.set(image_x, image_y, (c * intensity).into());
-            }
+            let intensity = light.dot(screen).max(0.0);
+            let x = tex_x.dot(screen);
+            let y = tex_y.dot(screen);
+            let c: V3 = model.texture.get_f(x,y).into();
+            image.set(image_x, image_y, (c * intensity).into());
         }
+    }
+}
+
+fn barycentric(tri: &Vec<V3>, p: &V2) -> V3 {
+    let u = v3(
+        tri[2].x - tri[0].x,
+        tri[1].x - tri[0].x,
+        tri[0].x - p.x
+    ).cross(v3(
+        tri[2].y - tri[0].y,
+        tri[1].y - tri[0].y,
+        tri[0].y - p.y
+    ));
+
+    if u.z.abs() < 1. {
+        v3(-1., 1., 1.)
+    } else {
+        v3(1. - (u.x+u.y) / u.z, u.y / u.z, u.x / u.z)
     }
 }
 
