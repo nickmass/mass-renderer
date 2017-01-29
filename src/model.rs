@@ -101,7 +101,7 @@ impl Model {
                     }
                 }
                 "f" => {
-                    if parts.len() != 4 {
+                    if parts.len() < 4 {
                         Some(ModelObj::Invalid)
                     } else {
                         let mut invalid = false;
@@ -121,7 +121,7 @@ impl Model {
                             }
 
                             v
-                        }).collect();
+                        }).take(3).collect();
 
                         if invalid {
                             Some(ModelObj::Invalid)

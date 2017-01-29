@@ -61,13 +61,18 @@ impl Renderer {
     }
 
     fn triangle<S: Shader>(&mut self, shader: &mut S, ctx: &RenderContext, face: &Face) {
-        let points: Vec<V3> = (0..3).map(|i| shader.vertex(ctx, face, i)).collect();
-
-        let points_z = v3(
-            points[0].z,
-            points[1].z,
-            points[2].z,
+        let clip_coords: Vec<V4> = (0..3).map(|i| shader.vertex(ctx, face, i)).collect();
+        let clipc_z = v3(
+            clip_coords[0].z,
+            clip_coords[1].z,
+            clip_coords[2].z,
         );
+
+        let points: Vec<V4> = clip_coords.iter().map(|p| {
+            let p = ctx.viewport * p;
+            v4(p.x / p.w, p.y / p.w, p.z / p.w, p.w)
+        }).collect();
+
 
         let (bbmin, bbmax) = {
             let clamp = v2((self.width-1) as f64, (self.height-1) as f64);
@@ -89,12 +94,16 @@ impl Renderer {
             let coords = barycentric(&points, &p);
             if coords.x < 0. || coords.y < 0. || coords.z < 0. { continue; }
 
+            let clip = v3(coords.x / points[0].w,
+                          coords.y / points[1].w,
+                          coords.z / points[2].w);
+            let clip = clip / (clip.x + clip.y + clip.z);
+            let z = (clipc_z.dot(clip) + 1.) / 2.;
+
             let image_x = p.x as u32;
             let image_y = p.y as u32;
-
-            let z = points_z.dot(coords);
             if self.z_buf.get(image_x, image_y) < z {
-                shader.fragment(ctx, coords).map(|c| {
+                shader.fragment(ctx, clip).map(|c| {
                     self.display_buf.set(image_x, image_y, c);
                     self.z_buf.set(image_x, image_y, z);
                 });
@@ -143,7 +152,7 @@ pub fn matrix_transform(v: &V3, m: &M4) -> V3 {
     v3(v.x / v.w, v.y / v.w, v.z / v.w)
 }
 
-fn barycentric(tri: &Vec<V3>, p: &V2) -> V3 {
+fn barycentric(tri: &Vec<V4>, p: &V2) -> V3 {
     let u = v3(
         tri[2].x - tri[0].x,
         tri[1].x - tri[0].x,
@@ -214,8 +223,42 @@ pub struct RenderContext<'a> {
 
 pub trait Shader {
     fn prepare(&mut self, ctx: &RenderContext);
-    fn vertex(&mut self, ctx: &RenderContext, face: &Face, vert: usize) -> V3;
+    fn vertex(&mut self, ctx: &RenderContext, face: &Face, vert: usize) -> V4;
     fn fragment(&mut self, ctx: &RenderContext, coords: V3) -> Option<V3>;
+}
+
+pub struct SolidShader {
+    light_dir: V3,
+    intensity: V3,
+    transform: M4,
+}
+
+impl SolidShader {
+    pub fn new(light_dir: V3) -> SolidShader {
+        SolidShader {
+            light_dir: light_dir.normalize(),
+            intensity: V3::unit_z(),
+            transform: M4::identity(),
+        }
+    }
+}
+
+impl Shader for SolidShader {
+    fn prepare(&mut self, ctx: &RenderContext) {
+        self.transform = ctx.projection * ctx.modelview;
+    }
+
+    fn vertex(&mut self, _ctx: &RenderContext, face: &Face, vert: usize) -> V4 {
+        self.intensity[vert] = face.norms[vert].dot(self.light_dir);
+        self.transform * face.verts[vert].extend(1.)
+
+    }
+
+    fn fragment(&mut self, _ctx: &RenderContext, coords: V3) -> Option<V3> {
+        let intensity = self.intensity.dot(coords).max(0.0);
+        let c = v3(1.,1.,1.) * intensity;
+        Some(c)
+    }
 }
 
 pub struct DefaultShader {
@@ -223,8 +266,7 @@ pub struct DefaultShader {
     uv_x: V3,
     uv_y: V3,
     transform: M4,
-    uniform_m: M4,
-    uniform_mt: M4,
+    transform_t: M4,
 }
 
 impl DefaultShader {
@@ -234,29 +276,27 @@ impl DefaultShader {
             uv_x: V3::unit_z(),
             uv_y: V3::unit_z(),
             transform: M4::identity(),
-            uniform_m: M4::identity(),
-            uniform_mt: M4::identity(),
+            transform_t: M4::identity(),
         }
     }
 }
 
 impl Shader for DefaultShader {
     fn prepare(&mut self, ctx: &RenderContext) {
-        self.transform = ctx.viewport * ctx.projection * ctx.modelview;
-        self.uniform_m = ctx.projection * ctx.modelview;
-        self.uniform_mt = self.uniform_m.transpose().invert().unwrap_or(M4::identity());
+        self.transform = ctx.projection * ctx.modelview;
+        self.transform_t = self.transform.transpose().invert().unwrap_or(M4::identity());
     }
 
-    fn vertex(&mut self, ctx: &RenderContext, face: &Face, vert: usize) -> V3 {
+    fn vertex(&mut self, _ctx: &RenderContext, face: &Face, vert: usize) -> V4 {
         self.uv_x[vert] = face.texs[vert].x;
         self.uv_y[vert] = face.texs[vert].y;
-        matrix_transform(&face.verts[vert], &self.transform)
+        self.transform * face.verts[vert].extend(1.)
     }
 
     fn fragment(&mut self, ctx: &RenderContext, coords: V3) -> Option<V3> {
         let uv = v2(self.uv_x.dot(coords), self.uv_y.dot(coords));
-        let n = matrix_transform(&ctx.model.normal(uv).truncate(), &self.uniform_mt).normalize();
-        let l = matrix_transform(&self.light_dir, &self.uniform_m).normalize();
+        let n = matrix_transform(&ctx.model.normal(uv).truncate(), &self.transform_t).normalize();
+        let l = matrix_transform(&self.light_dir, &self.transform).normalize();
         let r = ((n * n.dot(l * 2.)) - l).normalize();
         let diffuse = n.dot(l).max(0.0);
         let specular = r.z.max(0.0).powf(ctx.model.specular(uv));

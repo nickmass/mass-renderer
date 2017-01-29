@@ -21,7 +21,7 @@ type V4 = Vector4<f64>;
 type M4 = Matrix4<f64>;
 
 pub mod renderer;
-use renderer::{Renderer, DefaultShader};
+use renderer::{Renderer, SolidShader, DefaultShader};
 
 pub mod model;
 use model::Model;
