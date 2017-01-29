@@ -21,8 +21,6 @@ pub struct Renderer {
     viewport: M4,
     projection: M4,
     modelview: M4,
-    light_direction: V3,
-
 }
 
 impl Renderer {
@@ -35,7 +33,6 @@ impl Renderer {
             viewport: M4::identity(),
             projection: M4::identity(),
             modelview: M4::identity(),
-            light_direction: V3::unit_z(),
         }
     }
 
@@ -44,16 +41,64 @@ impl Renderer {
         self.z_buf = Surface::new(self.width, self.height, ::std::f64::MIN);
     }
 
-    pub fn render(&mut self, model: &Model) {
-        let transform = self.viewport * self.projection * self.modelview;
+    pub fn render<S: Shader>(&mut self, shader: &mut S, model: &Model) {
+        let ctx = RenderContext {
+            viewport: self.viewport,
+            projection: self.projection,
+            modelview: self.modelview,
+            model: &model,
+        };
+        shader.prepare(&ctx);
         for face in model.faces() {
-            self.triangle(&face, &model, &transform);
+            self.triangle(shader, &ctx, &face);
         }
     }
 
     pub fn dump(&self) {
         let _ = self.display_buf.write("image.png");
         let _ = self.z_buf.write("z_buf.png");
+    }
+
+    fn triangle<S: Shader>(&mut self, shader: &mut S, ctx: &RenderContext, face: &Face) {
+        let points: Vec<V3> = (0..3).map(|i| shader.vertex(ctx, face, i)).collect();
+
+        let points_z = v3(
+            points[0].z,
+            points[1].z,
+            points[2].z,
+        );
+
+        let (bbmin, bbmax) = {
+            let clamp = v2((self.width-1) as f64, (self.height-1) as f64);
+            let range  = (v2(::std::f64::MAX, ::std::f64::MAX), v2(::std::f64::MIN, ::std::f64::MIN));
+            let (min, max) = points.iter().fold(range, |mut a, p|{
+                if p.x < a.0.x { a.0.x = p.x; }
+                if p.y < a.0.y { a.0.y = p.y; }
+                if p.x > a.1.x { a.1.x = p.x; }
+                if p.y > a.1.y { a.1.y = p.y; }
+                a
+            });
+            (
+                v2((0_f64).max(min.x.floor()), (0_f64).max(min.y.floor())),
+                v2(clamp.x.min(max.x.floor()), clamp.y.min(max.y.floor()))
+            )
+        };
+
+        for p in V2Box::new(bbmin, bbmax) {
+            let coords = barycentric(&points, &p);
+            if coords.x < 0. || coords.y < 0. || coords.z < 0. { continue; }
+
+            let image_x = p.x as u32;
+            let image_y = p.y as u32;
+
+            let z = points_z.dot(coords);
+            if self.z_buf.get(image_x, image_y) < z {
+                shader.fragment(ctx, coords).map(|c| {
+                    self.display_buf.set(image_x, image_y, c);
+                    self.z_buf.set(image_x, image_y, z);
+                });
+            }
+        }
     }
 
     pub fn viewport(&mut self, x: f64, y: f64, width: f64, height: f64) {
@@ -90,76 +135,9 @@ impl Renderer {
 
         self.modelview = modelview;
     }
-
-    pub fn light_direction(&mut self, direction: V3) {
-        self.light_direction = direction.normalize();
-    }
-
-    fn triangle(&mut self, face: &Face, model: &Model, transform: &M4) {
-        let points: Vec<V3> = face.verts.iter()
-            .map(|p| matrix_transform(&p, &transform))
-            .collect();
-
-        let light = v3(
-            face.norms[0].dot(self.light_direction),
-            face.norms[1].dot(self.light_direction),
-            face.norms[2].dot(self.light_direction)
-        );
-
-        let points_z = v3(
-            points[0].z,
-            points[1].z,
-            points[2].z,
-        );
-
-        let tex_x = v3(
-            face.texs[0].x,
-            face.texs[1].x,
-            face.texs[2].x
-        );
-
-        let tex_y = v3(
-            face.texs[0].y,
-            face.texs[1].y,
-            face.texs[2].y,
-        );
-
-        let (bbmin, bbmax) = {
-            let clamp = v2((self.width-1) as f64, (self.height-1) as f64);
-            let range  = (v2(::std::f64::MAX, ::std::f64::MAX), v2(::std::f64::MIN, ::std::f64::MIN));
-            let (min, max) = points.iter().fold(range, |mut a, p|{
-                if p.x < a.0.x { a.0.x = p.x; }
-                if p.y < a.0.y { a.0.y = p.y; }
-                if p.x > a.1.x { a.1.x = p.x; }
-                if p.y > a.1.y { a.1.y = p.y; }
-                a
-            });
-            (
-                v2((0_f64).max(min.x.floor()), (0_f64).max(min.y.floor())),
-                v2(clamp.x.min(max.x.floor()), clamp.y.min(max.y.floor()))
-            )
-        };
-
-        for p in V2Box::new(bbmin, bbmax) {
-            let screen = barycentric(&points, &p);
-            if screen.x < 0. || screen.y < 0. || screen.z < 0. { continue; }
-
-            let image_x = p.x as u32;
-            let image_y = p.y as u32;
-
-            let z = points_z.dot(screen);
-            if self.z_buf.get(image_x, image_y) < z {
-                let intensity = light.dot(screen).max(0.0);
-                let uv = v2(tex_x.dot(screen), tex_y.dot(screen));
-                let c = model.diffuse(uv).truncate() * intensity;
-                self.display_buf.set(image_x, image_y, c);
-                self.z_buf.set(image_x, image_y, z);
-            }
-        }
-    }
 }
 
-fn matrix_transform(v: &V3, m: &M4) -> V3 {
+pub fn matrix_transform(v: &V3, m: &M4) -> V3 {
     let v = m * v.extend(1.);
     v3(v.x / v.w, v.y / v.w, v.z / v.w)
 }
@@ -223,6 +201,58 @@ impl Iterator for V2Box {
             }
         }
         Some(next)
+    }
+}
+
+pub struct RenderContext<'a> {
+    viewport: M4,
+    projection: M4,
+    modelview: M4,
+    model: &'a Model,
+}
+
+pub trait Shader {
+    fn prepare(&mut self, ctx: &RenderContext);
+    fn vertex(&mut self, ctx: &RenderContext, face: &Face, vert: usize) -> V3;
+    fn fragment(&mut self, ctx: &RenderContext, coords: V3) -> Option<V3>;
+}
+
+pub struct DefaultShader {
+    light_dir: V3,
+    uv_x: V3,
+    uv_y: V3,
+    intensity: V3,
+    transform: M4,
+}
+
+impl DefaultShader {
+    pub fn new(light_dir: V3) -> DefaultShader {
+        DefaultShader {
+            light_dir: light_dir.normalize(),
+            uv_x: V3::unit_z(),
+            uv_y: V3::unit_z(),
+            intensity: V3::unit_z(),
+            transform: M4::identity(),
+        }
+    }
+}
+
+impl Shader for DefaultShader {
+    fn prepare(&mut self, ctx: &RenderContext) {
+        self.transform = ctx.viewport * ctx.projection * ctx.modelview;
+    }
+
+    fn vertex(&mut self, ctx: &RenderContext, face: &Face, vert: usize) -> V3 {
+        self.uv_x[vert] = face.texs[vert].x;
+        self.uv_y[vert] = face.texs[vert].y;
+        self.intensity[vert] = face.norms[vert].dot(self.light_dir);
+        matrix_transform(&face.verts[vert], &self.transform)
+    }
+
+    fn fragment(&mut self, ctx: &RenderContext, coords: V3) -> Option<V3> {
+        let intensity = self.intensity.dot(coords).max(0.0);
+        let uv = v2(self.uv_x.dot(coords), self.uv_y.dot(coords));
+        Some(ctx.model.diffuse(uv).truncate() * intensity)
     }
 }
 

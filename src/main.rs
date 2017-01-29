@@ -19,7 +19,7 @@ type V4 = Vector4<f64>;
 type M4 = Matrix4<f64>;
 
 pub mod renderer;
-use renderer::Renderer;
+use renderer::{Renderer, DefaultShader};
 
 pub mod model;
 use model::Model;
@@ -40,11 +40,11 @@ fn main() {
                       height as f64 * 0.75);
     renderer.projection((eye-center).magnitude());
     renderer.lookat(eye, center, up);
-    renderer.light_direction(v3(1.,1.,1.));
 
     renderer.clear(v3(0.8,0.8,1.));
+    let mut shader = DefaultShader::new(v3(1.,1.,1.));
     for model in models.iter().chain(floor().iter())  {
-        renderer.render(&model);
+        renderer.render(&mut shader, &model);
     }
 
     renderer.dump();
