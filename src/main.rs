@@ -2,8 +2,10 @@ extern crate image;
 extern crate cgmath;
 
 use cgmath::{
+    ElementWise,
     InnerSpace,
     SquareMatrix,
+    Matrix,
     vec2 as v2,
     vec3 as v3,
     vec4 as v4,
@@ -63,18 +65,20 @@ fn floor() -> Vec<Model> {
 #[allow(dead_code)]
 fn head() -> Vec<Model> {
     vec![
-        //Model::load("../../tinyrenderer/obj/african_head/african_head_eye_outer.obj",
-        //           "../../tinyrenderer/obj/african_head/african_head_eye_outer_diffuse.tga",
-        //           "../../tinyrenderer/obj/african_head/african_head_eye_outer_spec.tga",
-        //           "../../tinyrenderer/obj/african_head/african_head_eye_outer_nm_tangent.tga"),
+/*
+        Model::load("../../tinyrenderer/obj/african_head/african_head_eye_outer.obj",
+                   "../../tinyrenderer/obj/african_head/african_head_eye_outer_diffuse.tga",
+                   "../../tinyrenderer/obj/african_head/african_head_eye_outer_spec.tga",
+                   "../../tinyrenderer/obj/african_head/african_head_eye_outer_nm.tga"),
+*/
         Model::load("../../tinyrenderer/obj/african_head/african_head_eye_inner.obj",
                    "../../tinyrenderer/obj/african_head/african_head_eye_inner_diffuse.tga",
                    "../../tinyrenderer/obj/african_head/african_head_eye_inner_spec.tga",
-                   "../../tinyrenderer/obj/african_head/african_head_eye_inner_nm_tangent.tga"),
+                   "../../tinyrenderer/obj/african_head/african_head_eye_inner_nm.tga"),
         Model::load("../../tinyrenderer/obj/african_head/african_head.obj",
                    "../../tinyrenderer/obj/african_head/african_head_diffuse.tga",
                    "../../tinyrenderer/obj/african_head/african_head_spec.tga",
-                   "../../tinyrenderer/obj/african_head/african_head_nm_tangent.tga"),
+                   "../../tinyrenderer/obj/african_head/african_head_nm.tga"),
     ]
 }
 #[allow(dead_code)]
@@ -83,7 +87,7 @@ fn diablo() -> Vec<Model> {
         Model::load("../../tinyrenderer/obj/diablo3_pose/diablo3_pose.obj",
                    "../../tinyrenderer/obj/diablo3_pose/diablo3_pose_diffuse.tga",
                    "../../tinyrenderer/obj/diablo3_pose/diablo3_pose_spec.tga",
-                   "../../tinyrenderer/obj/diablo3_pose/diablo3_pose_nm_tangent.tga"),
+                   "../../tinyrenderer/obj/diablo3_pose/diablo3_pose_nm.tga"),
     ]
 }
 

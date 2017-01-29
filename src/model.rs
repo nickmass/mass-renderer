@@ -1,5 +1,6 @@
 use ::renderer::Surface;
 use ::{
+    ElementWise,
     V2,
     V3,
     V4,
@@ -169,12 +170,12 @@ impl Model {
         self.diffuse.get_f(uv.x, uv.y)
     }
 
-    pub fn specular(&self, uv: V2) -> V4 {
-        self.specular.get_f(uv.x, uv.y)
+    pub fn specular(&self, uv: V2) -> f64 {
+        self.specular.get_f(uv.x, uv.y).x * 255.
     }
 
     pub fn normal(&self, uv: V2) -> V4 {
-        self.normal.get_f(uv.x, uv.y)
+        (self.normal.get_f(uv.x, uv.y) * 2.).sub_element_wise(1.)
     }
 }
 

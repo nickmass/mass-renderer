@@ -8,6 +8,7 @@ use ::{
     v2,
     v3,
     v4,
+    Matrix,
     SquareMatrix,
     InnerSpace,
     image,
@@ -221,8 +222,9 @@ pub struct DefaultShader {
     light_dir: V3,
     uv_x: V3,
     uv_y: V3,
-    intensity: V3,
     transform: M4,
+    uniform_m: M4,
+    uniform_mt: M4,
 }
 
 impl DefaultShader {
@@ -231,8 +233,9 @@ impl DefaultShader {
             light_dir: light_dir.normalize(),
             uv_x: V3::unit_z(),
             uv_y: V3::unit_z(),
-            intensity: V3::unit_z(),
             transform: M4::identity(),
+            uniform_m: M4::identity(),
+            uniform_mt: M4::identity(),
         }
     }
 }
@@ -240,19 +243,29 @@ impl DefaultShader {
 impl Shader for DefaultShader {
     fn prepare(&mut self, ctx: &RenderContext) {
         self.transform = ctx.viewport * ctx.projection * ctx.modelview;
+        self.uniform_m = ctx.projection * ctx.modelview;
+        self.uniform_mt = self.uniform_m.transpose().invert().unwrap_or(M4::identity());
     }
 
     fn vertex(&mut self, ctx: &RenderContext, face: &Face, vert: usize) -> V3 {
         self.uv_x[vert] = face.texs[vert].x;
         self.uv_y[vert] = face.texs[vert].y;
-        self.intensity[vert] = face.norms[vert].dot(self.light_dir);
         matrix_transform(&face.verts[vert], &self.transform)
     }
 
     fn fragment(&mut self, ctx: &RenderContext, coords: V3) -> Option<V3> {
-        let intensity = self.intensity.dot(coords).max(0.0);
         let uv = v2(self.uv_x.dot(coords), self.uv_y.dot(coords));
-        Some(ctx.model.diffuse(uv).truncate() * intensity)
+        let n = matrix_transform(&ctx.model.normal(uv).truncate(), &self.uniform_mt).normalize();
+        let l = matrix_transform(&self.light_dir, &self.uniform_m).normalize();
+        let r = ((n * n.dot(l * 2.)) - l).normalize();
+        let diffuse = n.dot(l).max(0.0);
+        let specular = r.z.max(0.0).powf(ctx.model.specular(uv));
+        let c = ctx.model.diffuse(uv).truncate();
+        let mut c = c * (diffuse + 0.6 * specular);
+        for i in 0..3 {
+            c[i] = (c[i] + 0.02).min(1.);
+        }
+        Some(c)
     }
 }
 
