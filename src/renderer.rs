@@ -36,7 +36,6 @@ impl Renderer {
             projection: M4::identity(),
             modelview: M4::identity(),
             light_direction: V3::unit_z(),
-
         }
     }
 
@@ -47,17 +46,17 @@ impl Renderer {
 
     pub fn render(&mut self, model: &Model) {
         let transform = self.viewport * self.projection * self.modelview;
-        for face in model.faces.iter() {
+        for face in model.faces() {
             self.triangle(&face, &model, &transform);
         }
     }
 
     pub fn dump(&self) {
         let _ = self.display_buf.write("image.png");
+        let _ = self.z_buf.write("z_buf.png");
     }
 
-    pub fn viewport(&mut self, x: u32, y: u32, width: u32, height: u32) {
-        let (width, height, x, y) = (width as f64, height as f64, x as f64, y as f64);
+    pub fn viewport(&mut self, x: f64, y: f64, width: f64, height: f64) {
         let mut viewport = M4::identity();
         viewport[0][0] = width / 2.;
         viewport[1][1] = height / 2.;
@@ -150,12 +149,11 @@ impl Renderer {
 
             let z = points_z.dot(screen);
             if self.z_buf.get(image_x, image_y) < z {
-                self.z_buf.set(image_x, image_y, z);
                 let intensity = light.dot(screen).max(0.0);
-                let x = tex_x.dot(screen);
-                let y = tex_y.dot(screen);
-                let c = model.texture.get_f(x,y).truncate() * intensity;
+                let uv = v2(tex_x.dot(screen), tex_y.dot(screen));
+                let c = model.diffuse(uv).truncate() * intensity;
                 self.display_buf.set(image_x, image_y, c);
+                self.z_buf.set(image_x, image_y, z);
             }
         }
     }
@@ -258,11 +256,11 @@ impl<T: Copy> Surface<T> {
         }
     }
 
-    fn get(&self, x: u32, y: u32) -> T {
+    pub fn get(&self, x: u32, y: u32) -> T {
         self.pixels[((y * self.width) + x) as usize]
     }
 
-    fn get_f(&self, x: f64, y: f64) -> T {
+    pub fn get_f(&self, x: f64, y: f64) -> T {
         self.get((x*self.width as f64) as u32, (y*self.height as f64) as u32)
     }
 

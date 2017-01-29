@@ -14,13 +14,20 @@ pub struct Face {
 }
 
 pub struct Model {
-    pub texture: Surface<V4>,
-    pub faces: Vec<Face>,
-    vertices: Vec<V3>,
+    faces: Vec<Vec<Vec<usize>>>,
+    verts: Vec<V3>,
+    uvs: Vec<V2>,
+    norms: Vec<V3>,
+    diffuse: Surface<V4>,
+    specular: Surface<V4>,
+    normal: Surface<V4>,
 }
 
+use ::std::path::Path;
 impl Model {
-    pub fn load<G: AsRef<::std::path::Path>, D: AsRef<::std::path::Path>>(geometry: G, diffuse: D) -> Model {
+    pub fn load<G, D, S, N>(geometry: G, diffuse: D, specular: S, normal: N) -> Model
+        where G: AsRef<Path>, D: AsRef<Path>, S: AsRef<Path>, N: AsRef<Path>
+    {
         use ::std::io::{BufReader, BufRead};
         enum ModelObj {
             Vert(V3),
@@ -31,14 +38,14 @@ impl Model {
         }
 
         let reader = BufReader::new(::std::fs::File::open(geometry).unwrap());
-        let (verts, texs, norms, faces, valid) = reader.lines().filter_map(|l| {
+        let (verts, uvs, norms, faces, valid) = reader.lines().filter_map(|l| {
             let l = l.unwrap();
             let parts: Vec<&str> = l.split(' ').filter(|x| x.len() > 0).collect();
             if parts.len() == 0 { return None; }
 
             match parts[0] {
                 "v" => {
-                    if parts.len() != 4 {
+                    if parts.len() < 4 {
                         Some(ModelObj::Invalid)
                     } else {
                         let x = parts[1].parse();
@@ -140,25 +147,62 @@ impl Model {
             panic!("Invalid .obj file");
         }
 
-        let faces = faces.iter().map(|f| {
-            let (v,t,n) = f.iter().fold((Vec::new(), Vec::new(), Vec::new()), |mut a, t| {
-                a.0.push(*verts.get(t[0] - 1).unwrap());
-                a.1.push(*texs.get(t[1] - 1).unwrap());
-                a.2.push(*norms.get(t[2] - 1).unwrap());
+        Model {
+            faces: faces,
+            verts: verts,
+            uvs: uvs,
+            norms: norms,
+            diffuse: Surface::from_file(diffuse),
+            specular: Surface::from_file(specular),
+            normal: Surface::from_file(normal),
+        }
+    }
+
+    pub fn faces<'a>(&'a self) -> FaceIterator<'a> {
+        FaceIterator {
+            model: self,
+            cur: 0,
+        }
+    }
+
+    pub fn diffuse(&self, uv: V2) -> V4 {
+        self.diffuse.get_f(uv.x, uv.y)
+    }
+
+    pub fn specular(&self, uv: V2) -> V4 {
+        self.specular.get_f(uv.x, uv.y)
+    }
+
+    pub fn normal(&self, uv: V2) -> V4 {
+        self.normal.get_f(uv.x, uv.y)
+    }
+}
+
+pub struct FaceIterator<'a> {
+    model: &'a Model,
+    cur: usize,
+}
+
+impl<'a> Iterator for FaceIterator<'a> {
+    type Item = Face;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(next) = self.model.faces.get(self.cur) {
+            self.cur += 1;
+            let (v,t,n) = next.iter().fold((Vec::new(), Vec::new(), Vec::new()), |mut a, t| {
+                a.0.push(*self.model.verts.get(t[0] - 1).unwrap());
+                a.1.push(*self.model.uvs.get(t[1] - 1).unwrap());
+                a.2.push(*self.model.norms.get(t[2] - 1).unwrap());
                 a
             });
 
-            Face {
+            Some(Face {
                 verts: v,
                 texs: t,
                 norms: n,
-            }
-        }).collect();
-
-        Model {
-            texture: Surface::from_file(diffuse),
-            faces: faces,
-            vertices: verts,
+            })
+        } else {
+            None
         }
     }
 }
