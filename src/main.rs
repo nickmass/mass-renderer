@@ -96,56 +96,56 @@ fn main() {
 #[allow(dead_code)]
 fn floor() -> Vec<Model> {
     vec![
-        Model::load("../../tinyrenderer/obj/floor.obj",
-                   "../../tinyrenderer/obj/floor_diffuse.tga",
-                   "../../tinyrenderer/obj/floor_diffuse.tga",
-                   "../../tinyrenderer/obj/floor_nm_tangent.tga")
+        Model::load("tinyrenderer/obj/floor.obj",
+                   "tinyrenderer/obj/floor_diffuse.tga",
+                   "tinyrenderer/obj/floor_diffuse.tga",
+                   "tinyrenderer/obj/floor_nm_tangent.tga")
     ]
 }
 
 #[allow(dead_code)]
 fn head() -> Vec<Model> {
     vec![
-/*
-        Model::load("../../tinyrenderer/obj/african_head/african_head_eye_outer.obj",
-                   "../../tinyrenderer/obj/african_head/african_head_eye_outer_diffuse.tga",
-                   "../../tinyrenderer/obj/african_head/african_head_eye_outer_spec.tga",
-                   "../../tinyrenderer/obj/african_head/african_head_eye_outer_nm_tangent.tga"),
-*/
-        Model::load("../../tinyrenderer/obj/african_head/african_head_eye_inner.obj",
-                   "../../tinyrenderer/obj/african_head/african_head_eye_inner_diffuse.tga",
-                   "../../tinyrenderer/obj/african_head/african_head_eye_inner_spec.tga",
-                   "../../tinyrenderer/obj/african_head/african_head_eye_inner_nm_tangent.tga"),
-        Model::load("../../tinyrenderer/obj/african_head/african_head.obj",
-                   "../../tinyrenderer/obj/african_head/african_head_diffuse.tga",
-                   "../../tinyrenderer/obj/african_head/african_head_spec.tga",
-                   "../../tinyrenderer/obj/african_head/african_head_nm_tangent.tga"),
+        /*
+        Model::load("tinyrenderer/obj/african_head/african_head_eye_outer.obj",
+        "tinyrenderer/obj/african_head/african_head_eye_outer_diffuse.tga",
+        "tinyrenderer/obj/african_head/african_head_eye_outer_spec.tga",
+        "tinyrenderer/obj/african_head/african_head_eye_outer_nm_tangent.tga"),
+         */
+        Model::load("tinyrenderer/obj/african_head/african_head_eye_inner.obj",
+                   "tinyrenderer/obj/african_head/african_head_eye_inner_diffuse.tga",
+                   "tinyrenderer/obj/african_head/african_head_eye_inner_spec.tga",
+                   "tinyrenderer/obj/african_head/african_head_eye_inner_nm_tangent.tga"),
+        Model::load("tinyrenderer/obj/african_head/african_head.obj",
+                   "tinyrenderer/obj/african_head/african_head_diffuse.tga",
+                   "tinyrenderer/obj/african_head/african_head_spec.tga",
+                   "tinyrenderer/obj/african_head/african_head_nm_tangent.tga"),
     ]
 }
 #[allow(dead_code)]
 fn diablo() -> Vec<Model> {
     vec![
-        Model::load("../../tinyrenderer/obj/diablo3_pose/diablo3_pose.obj",
-                   "../../tinyrenderer/obj/diablo3_pose/diablo3_pose_diffuse.tga",
-                   "../../tinyrenderer/obj/diablo3_pose/diablo3_pose_spec.tga",
-                   "../../tinyrenderer/obj/diablo3_pose/diablo3_pose_nm_tangent.tga"),
+        Model::load("tinyrenderer/obj/diablo3_pose/diablo3_pose.obj",
+                   "tinyrenderer/obj/diablo3_pose/diablo3_pose_diffuse.tga",
+                   "tinyrenderer/obj/diablo3_pose/diablo3_pose_spec.tga",
+                   "tinyrenderer/obj/diablo3_pose/diablo3_pose_nm_tangent.tga"),
     ]
 }
 
 #[allow(dead_code)]
 fn boggie() -> Vec<Model> {
     vec![
-        Model::load("../../tinyrenderer/obj/boggie/body.obj",
-                   "../../tinyrenderer/obj/boggie/body_diffuse.tga",
-                   "../../tinyrenderer/obj/boggie/body_spec.tga",
-                   "../../tinyrenderer/obj/boggie/body_nm_tangent.tga"),
-        Model::load("../../tinyrenderer/obj/boggie/eyes.obj",
-                   "../../tinyrenderer/obj/boggie/eyes_diffuse.tga",
-                   "../../tinyrenderer/obj/boggie/eyes_spec.tga",
-                   "../../tinyrenderer/obj/boggie/eyes_nm_tangent.tga"),
-        Model::load("../../tinyrenderer/obj/boggie/head.obj",
-                   "../../tinyrenderer/obj/boggie/head_diffuse.tga",
-                   "../../tinyrenderer/obj/boggie/head_spec.tga",
-                   "../../tinyrenderer/obj/boggie/head_nm_tangent.tga"),
+        Model::load("tinyrenderer/obj/boggie/body.obj",
+                   "tinyrenderer/obj/boggie/body_diffuse.tga",
+                   "tinyrenderer/obj/boggie/body_spec.tga",
+                   "tinyrenderer/obj/boggie/body_nm_tangent.tga"),
+        Model::load("tinyrenderer/obj/boggie/eyes.obj",
+                   "tinyrenderer/obj/boggie/eyes_diffuse.tga",
+                   "tinyrenderer/obj/boggie/eyes_spec.tga",
+                   "tinyrenderer/obj/boggie/eyes_nm_tangent.tga"),
+        Model::load("tinyrenderer/obj/boggie/head.obj",
+                   "tinyrenderer/obj/boggie/head_diffuse.tga",
+                   "tinyrenderer/obj/boggie/head_spec.tga",
+                   "tinyrenderer/obj/boggie/head_nm_tangent.tga"),
     ]
 }
