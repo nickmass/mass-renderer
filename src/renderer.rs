@@ -37,6 +37,14 @@ impl Renderer {
         }
     }
 
+    pub fn display_buffer<'a>(&'a self) -> &'a Surface<V3> {
+        &self.display_buf
+    }
+
+    pub fn z_buffer<'a>(&'a self) -> &'a Surface<f64> {
+        &self.z_buf
+    }
+
     pub fn clear(&mut self, color: V3) {
         self.display_buf = Surface::new(self.width, self.height, color);
         self.z_buf = Surface::new(self.width, self.height, ::std::f64::MIN);
@@ -117,9 +125,6 @@ impl Renderer {
         viewport[1][1] = height / 2.;
         viewport[3][0] = width / 2. + x;
         viewport[3][1] = height / 2. + y;
-
-        viewport[2][2] = 0.5;
-        viewport[3][2] = 0.5;
 
         self.viewport = viewport;
     }

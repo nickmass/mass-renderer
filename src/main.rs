@@ -1,5 +1,7 @@
 extern crate image;
 extern crate cgmath;
+#[macro_use]
+extern crate glium;
 
 use cgmath::{
     ElementWise,
@@ -26,29 +28,44 @@ use renderer::{Renderer, SolidShader, DefaultShader};
 pub mod model;
 use model::Model;
 
+pub mod window;
+use window::Window;
+
 fn main() {
     let models = head();
 
     let (width, height) = (1024, 1024);
 
-    let eye = v3(1., 0., 3.);
-    let center = v3(0., 0., 0.);
-    let up = v3(0., 1., 0.);
+    let mut window = Window::new(width, height);
 
+    let mut light_dir = 0.0_f64;
     let mut renderer = Renderer::new(width, height);
-    renderer.viewport(width as f64 / 8.,
-                      height as f64 / 8.,
-                      width as f64 * 0.75,
-                      height as f64 * 0.75);
-    renderer.projection((eye-center).magnitude());
-    renderer.lookat(eye, center, up);
+    while !window.is_closed() {
+        let eye = v3(light_dir.sin(), light_dir.cos(), 3.);
+        let center = v3(0., 0., 0.);
+        let up = v3(0., 1., 0.);
 
-    renderer.clear(v3(0.8,0.8,1.));
-    let mut shader = DefaultShader::new(v3(1.,1.,1.));
-    for model in models.iter().chain(floor().iter())  {
-        renderer.render(&mut shader, &model);
+        let mut shader = DefaultShader::new(v3(light_dir.cos(),light_dir.sin(),1.));
+        renderer.viewport(width as f64 / 8.,
+                          height as f64 / 8.,
+                          width as f64 * 0.75,
+                          height as f64 * 0.75);
+        renderer.projection((eye-center).magnitude());
+        renderer.lookat(eye, center, up);
+
+        renderer.clear(v3(0.8,0.8,1.));
+
+        let start = ::std::time::Instant::now();
+        for model in models.iter().chain(floor().iter())  {
+            renderer.render(&mut shader, &model);
+        }
+        let duration = start.elapsed();
+
+        println!("{}.{:09}s", duration.as_secs(), duration.subsec_nanos());
+        window.render(renderer.z_buffer());
+
+        light_dir += 0.1;
     }
-
     renderer.dump();
 }
 
