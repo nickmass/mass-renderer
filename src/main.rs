@@ -14,12 +14,14 @@ use cgmath::{
     Vector2,
     Vector3,
     Vector4,
+    Matrix3,
     Matrix4,
 };
 
 type V2 = Vector2<f64>;
 type V3 = Vector3<f64>;
 type V4 = Vector4<f64>;
+type M3 = Matrix3<f64>;
 type M4 = Matrix4<f64>;
 
 pub mod renderer;
@@ -62,7 +64,7 @@ fn main() {
         let duration = start.elapsed();
 
         println!("{}.{:09}s", duration.as_secs(), duration.subsec_nanos());
-        window.render(renderer.z_buffer());
+        window.render(renderer.display_buffer());
 
         light_dir += 0.1;
     }
@@ -86,16 +88,16 @@ fn head() -> Vec<Model> {
         Model::load("../../tinyrenderer/obj/african_head/african_head_eye_outer.obj",
                    "../../tinyrenderer/obj/african_head/african_head_eye_outer_diffuse.tga",
                    "../../tinyrenderer/obj/african_head/african_head_eye_outer_spec.tga",
-                   "../../tinyrenderer/obj/african_head/african_head_eye_outer_nm.tga"),
+                   "../../tinyrenderer/obj/african_head/african_head_eye_outer_nm_tangent.tga"),
 */
         Model::load("../../tinyrenderer/obj/african_head/african_head_eye_inner.obj",
                    "../../tinyrenderer/obj/african_head/african_head_eye_inner_diffuse.tga",
                    "../../tinyrenderer/obj/african_head/african_head_eye_inner_spec.tga",
-                   "../../tinyrenderer/obj/african_head/african_head_eye_inner_nm.tga"),
+                   "../../tinyrenderer/obj/african_head/african_head_eye_inner_nm_tangent.tga"),
         Model::load("../../tinyrenderer/obj/african_head/african_head.obj",
                    "../../tinyrenderer/obj/african_head/african_head_diffuse.tga",
                    "../../tinyrenderer/obj/african_head/african_head_spec.tga",
-                   "../../tinyrenderer/obj/african_head/african_head_nm.tga"),
+                   "../../tinyrenderer/obj/african_head/african_head_nm_tangent.tga"),
     ]
 }
 #[allow(dead_code)]
@@ -104,7 +106,7 @@ fn diablo() -> Vec<Model> {
         Model::load("../../tinyrenderer/obj/diablo3_pose/diablo3_pose.obj",
                    "../../tinyrenderer/obj/diablo3_pose/diablo3_pose_diffuse.tga",
                    "../../tinyrenderer/obj/diablo3_pose/diablo3_pose_spec.tga",
-                   "../../tinyrenderer/obj/diablo3_pose/diablo3_pose_nm.tga"),
+                   "../../tinyrenderer/obj/diablo3_pose/diablo3_pose_nm_tangent.tga"),
     ]
 }
 

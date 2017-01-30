@@ -4,6 +4,7 @@ use ::{
     V2,
     V3,
     V4,
+    M3,
     M4,
     v2,
     v3,
@@ -268,20 +269,22 @@ impl Shader for SolidShader {
 
 pub struct DefaultShader {
     light_dir: V3,
-    uv_x: V3,
-    uv_y: V3,
     transform: M4,
     transform_t: M4,
+    uv: M3,
+    norm: M3,
+    ndc_coords: M3,
 }
 
 impl DefaultShader {
     pub fn new(light_dir: V3) -> DefaultShader {
         DefaultShader {
             light_dir: light_dir.normalize(),
-            uv_x: V3::unit_z(),
-            uv_y: V3::unit_z(),
             transform: M4::identity(),
             transform_t: M4::identity(),
+            uv: M3::identity(),
+            norm: M3::identity(),
+            ndc_coords: M3::identity(),
         }
     }
 }
@@ -293,14 +296,36 @@ impl Shader for DefaultShader {
     }
 
     fn vertex(&mut self, _ctx: &RenderContext, face: &Face, vert: usize) -> V4 {
-        self.uv_x[vert] = face.texs[vert].x;
-        self.uv_y[vert] = face.texs[vert].y;
-        self.transform * face.verts[vert].extend(1.)
+        self.uv[vert] = face.texs[vert].extend(1.);
+        self.norm[vert] = (self.transform_t * face.norms[vert].extend(0.)).truncate();
+
+        let next_vert = self.transform * face.verts[vert].extend(1.);
+        self.ndc_coords[vert] = (next_vert / next_vert.w).truncate();
+        next_vert
     }
 
     fn fragment(&mut self, ctx: &RenderContext, coords: V3) -> Option<V3> {
-        let uv = v2(self.uv_x.dot(coords), self.uv_y.dot(coords));
-        let n = matrix_transform(&ctx.model.normal(uv).truncate(), &self.transform_t).normalize();
+        let norm = (self.norm * coords).normalize();
+        let uv = (self.uv * coords).truncate();
+
+        let a = M3::from_cols(
+            self.ndc_coords[1] - self.ndc_coords[0],
+            self.ndc_coords[2] - self.ndc_coords[0],
+            norm,
+        ).transpose();
+
+        let ai = a.invert().unwrap();
+        let i = ai * v3(self.uv[1].x - self.uv[0].x, self.uv[2].x - self.uv[0].x, 0.);
+        let j = ai * v3(self.uv[1].y - self.uv[0].y, self.uv[2].y - self.uv[0].y, 0.);
+
+        let b = M3::from_cols(
+            i.normalize(),
+            j.normalize(),
+            norm,
+        );
+
+        let n = (b * ctx.model.normal(uv)).normalize();
+
         let l = matrix_transform(&self.light_dir, &self.transform).normalize();
         let r = ((n * n.dot(l * 2.)) - l).normalize();
         let diffuse = n.dot(l).max(0.0);

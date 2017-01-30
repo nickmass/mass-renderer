@@ -174,8 +174,8 @@ impl Model {
         self.specular.get_f(uv.x, uv.y).x * 255.
     }
 
-    pub fn normal(&self, uv: V2) -> V4 {
-        (self.normal.get_f(uv.x, uv.y) * 2.).sub_element_wise(1.)
+    pub fn normal(&self, uv: V2) -> V3 {
+        (self.normal.get_f(uv.x, uv.y) * 2.).sub_element_wise(1.).truncate()
     }
 }
 
