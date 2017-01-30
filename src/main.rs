@@ -25,7 +25,10 @@ type M3 = Matrix3<f64>;
 type M4 = Matrix4<f64>;
 
 pub mod renderer;
-use renderer::{Renderer, SolidShader, DefaultShader};
+use renderer::{Renderer, WriteSurface};
+
+pub mod shaders;
+use shaders::{DefaultShader, DepthShader};
 
 pub mod model;
 use model::Model;
@@ -40,33 +43,52 @@ fn main() {
 
     let mut window = Window::new(width, height);
 
-    let mut light_dir = 0.0_f64;
+    let mut light_mod = 0.0_f64;
     let mut renderer = Renderer::new(width, height);
     while !window.is_closed() {
-        let eye = v3(light_dir.sin(), light_dir.cos(), 3.);
+        let start = ::std::time::Instant::now();
+
+        let light_dir = v3(light_mod.cos(), light_mod.sin(), 1.);
+        let eye = v3(1., 1., 3.);
         let center = v3(0., 0., 0.);
         let up = v3(0., 1., 0.);
 
-        let mut shader = DefaultShader::new(v3(light_dir.cos(),light_dir.sin(),1.));
+        /*
+        let mut shader = DepthShader::new();
         renderer.viewport(width as f64 / 8.,
                           height as f64 / 8.,
                           width as f64 * 0.75,
                           height as f64 * 0.75);
-        renderer.projection((eye-center).magnitude());
-        renderer.lookat(eye, center, up);
+        renderer.projection(0.);
+        renderer.lookat(light_dir, center, up);
 
-        renderer.clear(v3(0.8,0.8,1.));
-
-        let start = ::std::time::Instant::now();
+        renderer.clear(v3(0.,0.,0.));
         for model in models.iter().chain(floor().iter())  {
             renderer.render(&mut shader, &model);
         }
-        let duration = start.elapsed();
+*/
+        let depth = renderer.z_buffer().clone();
+        let depth_matrix = renderer.viewport * renderer.projection * renderer.modelview;
 
+        let mut shader = DefaultShader::new(light_dir, depth, depth_matrix);
+        renderer.viewport(width as f64 / 8.,
+                          height as f64 / 8.,
+                          width as f64 * 0.75,
+                          height as f64 * 0.75);
+        renderer.projection(-1.0 / (eye-center).magnitude());
+        renderer.lookat(eye, center, up);
+
+        renderer.clear(v3(0.8,0.8,1.));
+        for model in models.iter().chain(floor().iter())  {
+            renderer.render(&mut shader, &model);
+        }
+
+        let duration = start.elapsed();
         println!("{}.{:09}s", duration.as_secs(), duration.subsec_nanos());
+
         window.render(renderer.display_buffer());
 
-        light_dir += 0.1;
+        light_mod += 0.1;
     }
     renderer.dump();
 }

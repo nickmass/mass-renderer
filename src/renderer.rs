@@ -4,12 +4,10 @@ use ::{
     V2,
     V3,
     V4,
-    M3,
     M4,
     v2,
     v3,
     v4,
-    Matrix,
     SquareMatrix,
     InnerSpace,
     image,
@@ -20,9 +18,9 @@ pub struct Renderer {
     z_buf: Surface<f64>,
     width: u32,
     height: u32,
-    viewport: M4,
-    projection: M4,
-    modelview: M4,
+    pub viewport: M4,
+    pub projection: M4,
+    pub modelview: M4,
 }
 
 impl Renderer {
@@ -70,18 +68,26 @@ impl Renderer {
     }
 
     fn triangle<S: Shader>(&mut self, shader: &mut S, ctx: &RenderContext, face: &Face) {
-        let clip_coords: Vec<V4> = (0..3).map(|i| shader.vertex(ctx, face, i)).collect();
-        let clipc_z = v3(
-            clip_coords[0].z,
-            clip_coords[1].z,
-            clip_coords[2].z,
+        let points: Vec<V4> = (0..3)
+            .map(|i| shader.vertex(ctx, face, i))
+            .collect();
+
+
+        let points_z = v3(
+            points[0].z,
+            points[1].z,
+            points[2].z,
         );
 
-        let points: Vec<V4> = clip_coords.iter().map(|p| {
-            let p = ctx.viewport * p;
-            v4(p.x / p.w, p.y / p.w, p.z / p.w, p.w)
-        }).collect();
+        let points_w = v3(
+            points[0].w,
+            points[1].w,
+            points[2].w,
+        );
 
+        let points: Vec<V3> = points.iter()
+            .map(|p| v3(p.x/p.w, p.y/p.w, p.z/p.w))
+            .collect();
 
         let (bbmin, bbmax) = {
             let clamp = v2((self.width-1) as f64, (self.height-1) as f64);
@@ -103,11 +109,14 @@ impl Renderer {
             let coords = barycentric(&points, &p);
             if coords.x < 0. || coords.y < 0. || coords.z < 0. { continue; }
 
-            let clip = v3(coords.x / points[0].w,
-                          coords.y / points[1].w,
-                          coords.z / points[2].w);
+            let clip = v3(
+                coords.x / points_w.x,
+                coords.y / points_w.y,
+                coords.z / points_w.z,
+            );
+
             let clip = clip / (clip.x + clip.y + clip.z);
-            let z = (clipc_z.dot(clip) + 1.) / 2.;
+            let z = points_z.dot(clip);
 
             let image_x = p.x as u32;
             let image_y = p.y as u32;
@@ -127,12 +136,15 @@ impl Renderer {
         viewport[3][0] = width / 2. + x;
         viewport[3][1] = height / 2. + y;
 
+        viewport[2][2] = 0.5;
+        viewport[3][2] = 0.5;
+
         self.viewport = viewport;
     }
 
     pub fn projection(&mut self, camera_distance: f64) {
         let mut projection = M4::identity();
-        projection[2][3] = -1. / camera_distance;
+        projection[2][3] = camera_distance;
 
         self.projection = projection;
     }
@@ -153,12 +165,12 @@ impl Renderer {
     }
 }
 
-pub fn matrix_transform(v: &V3, m: &M4) -> V3 {
+pub fn matrix_transform(v: V3, m: M4) -> V3 {
     let v = m * v.extend(1.);
     v3(v.x / v.w, v.y / v.w, v.z / v.w)
 }
 
-fn barycentric(tri: &Vec<V4>, p: &V2) -> V3 {
+fn barycentric(tri: &Vec<V3>, p: &V2) -> V3 {
     let u = v3(
         tri[2].x - tri[0].x,
         tri[1].x - tri[0].x,
@@ -221,10 +233,10 @@ impl Iterator for V2Box {
 }
 
 pub struct RenderContext<'a> {
-    viewport: M4,
-    projection: M4,
-    modelview: M4,
-    model: &'a Model,
+    pub viewport: M4,
+    pub projection: M4,
+    pub modelview: M4,
+    pub model: &'a Model,
 }
 
 pub trait Shader {
@@ -233,112 +245,7 @@ pub trait Shader {
     fn fragment(&mut self, ctx: &RenderContext, coords: V3) -> Option<V3>;
 }
 
-pub struct SolidShader {
-    light_dir: V3,
-    intensity: V3,
-    transform: M4,
-}
-
-impl SolidShader {
-    pub fn new(light_dir: V3) -> SolidShader {
-        SolidShader {
-            light_dir: light_dir.normalize(),
-            intensity: V3::unit_z(),
-            transform: M4::identity(),
-        }
-    }
-}
-
-impl Shader for SolidShader {
-    fn prepare(&mut self, ctx: &RenderContext) {
-        self.transform = ctx.projection * ctx.modelview;
-    }
-
-    fn vertex(&mut self, _ctx: &RenderContext, face: &Face, vert: usize) -> V4 {
-        self.intensity[vert] = face.norms[vert].dot(self.light_dir);
-        self.transform * face.verts[vert].extend(1.)
-
-    }
-
-    fn fragment(&mut self, _ctx: &RenderContext, coords: V3) -> Option<V3> {
-        let intensity = self.intensity.dot(coords).max(0.0);
-        let c = v3(1.,1.,1.) * intensity;
-        Some(c)
-    }
-}
-
-pub struct DefaultShader {
-    light_dir: V3,
-    transform: M4,
-    transform_t: M4,
-    uv: M3,
-    norm: M3,
-    ndc_coords: M3,
-}
-
-impl DefaultShader {
-    pub fn new(light_dir: V3) -> DefaultShader {
-        DefaultShader {
-            light_dir: light_dir.normalize(),
-            transform: M4::identity(),
-            transform_t: M4::identity(),
-            uv: M3::identity(),
-            norm: M3::identity(),
-            ndc_coords: M3::identity(),
-        }
-    }
-}
-
-impl Shader for DefaultShader {
-    fn prepare(&mut self, ctx: &RenderContext) {
-        self.transform = ctx.projection * ctx.modelview;
-        self.transform_t = self.transform.transpose().invert().unwrap_or(M4::identity());
-    }
-
-    fn vertex(&mut self, _ctx: &RenderContext, face: &Face, vert: usize) -> V4 {
-        self.uv[vert] = face.texs[vert].extend(1.);
-        self.norm[vert] = (self.transform_t * face.norms[vert].extend(0.)).truncate();
-
-        let next_vert = self.transform * face.verts[vert].extend(1.);
-        self.ndc_coords[vert] = (next_vert / next_vert.w).truncate();
-        next_vert
-    }
-
-    fn fragment(&mut self, ctx: &RenderContext, coords: V3) -> Option<V3> {
-        let norm = (self.norm * coords).normalize();
-        let uv = (self.uv * coords).truncate();
-
-        let a = M3::from_cols(
-            self.ndc_coords[1] - self.ndc_coords[0],
-            self.ndc_coords[2] - self.ndc_coords[0],
-            norm,
-        ).transpose();
-
-        let ai = a.invert().unwrap();
-        let i = ai * v3(self.uv[1].x - self.uv[0].x, self.uv[2].x - self.uv[0].x, 0.);
-        let j = ai * v3(self.uv[1].y - self.uv[0].y, self.uv[2].y - self.uv[0].y, 0.);
-
-        let b = M3::from_cols(
-            i.normalize(),
-            j.normalize(),
-            norm,
-        );
-
-        let n = (b * ctx.model.normal(uv)).normalize();
-
-        let l = matrix_transform(&self.light_dir, &self.transform).normalize();
-        let r = ((n * n.dot(l * 2.)) - l).normalize();
-        let diffuse = n.dot(l).max(0.0);
-        let specular = r.z.max(0.0).powf(ctx.model.specular(uv));
-        let c = ctx.model.diffuse(uv).truncate();
-        let mut c = c * (diffuse + 0.6 * specular);
-        for i in 0..3 {
-            c[i] = (c[i] + 0.02).min(1.);
-        }
-        Some(c)
-    }
-}
-
+#[derive(Clone)]
 pub struct Surface<T> {
     pixels: Vec<T>,
     width: u32,
@@ -374,10 +281,10 @@ impl<T: Copy> Surface<T> {
     }
 
     pub fn get_f(&self, x: f64, y: f64) -> T {
-        self.get((x*self.width as f64) as u32, (y*self.height as f64) as u32)
+        self.get((x*(self.width - 1) as f64) as u32, (y*(self.height - 1) as f64) as u32)
     }
 
-    fn line(&mut self, x0: u32, y0: u32, x1: u32, y1: u32, color: T) {
+    pub fn line(&mut self, x0: u32, y0: u32, x1: u32, y1: u32, color: T) {
         let (mut x0, mut x1, mut y0, mut y1) = (x0 as i32, x1 as i32, y0 as i32, y1 as i32);
         let mut steep = false;
         if (x0 - x1).abs() < (y0 - y1).abs() {
@@ -434,7 +341,7 @@ impl Surface<V4> {
     }
 }
 
-trait WriteSurface {
+pub trait WriteSurface {
     fn write<P: AsRef<::std::path::Path>>(&self, path: P) -> ::std::io::Result<()>;
 }
 

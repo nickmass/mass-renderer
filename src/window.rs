@@ -5,7 +5,7 @@ use glium::texture::{
     PixelValue,
     RawImage2d,
     ClientFormat,
-    texture2d,
+    srgb_texture2d,
 };
 
 #[derive(Copy, Clone)]
@@ -90,11 +90,11 @@ impl Window {
     }
 
     pub fn render<'a, T: 'a + Clone + PixelValue, I: Into<RawImage2d<'a, T>>>(&'a mut self, image: I) {
-        let image = image.into();
-
-        let texture = texture2d::Texture2d::new(&self.display, image).unwrap();
+        let texture = srgb_texture2d::SrgbTexture2d::new(&self.display, image.into()).unwrap();
         let uniforms = uniform! {
-            tex: texture.sampled(),
+            tex: texture.sampled()
+                .magnify_filter(glium::uniforms::MagnifySamplerFilter::Nearest)
+                .minify_filter(glium::uniforms::MinifySamplerFilter::Nearest),
         };
 
         let mut target = self.display.draw(); 
@@ -121,9 +121,9 @@ use ::renderer::{
 impl<'a, 'b, T> Into<RawImage2d<'a, (u8, u8, u8, u8)>> for &'b RSurface<T> where T: Into<RColor> + Copy {
     fn into(self) -> RawImage2d<'a, (u8, u8, u8, u8)> {
         let mut data = Vec::new();
-        for y in 0..self.width() {
-            for x in 0..self.height() {
-                let c: RColor = self.get(x, self.width() - y - 1).into();
+        for y in 0..self.height() {
+            for x in 0..self.width() {
+                let c = self.get(x, self.height() - y - 1).into();
                 data.push((c.r(), c.g(), c.b(), c.a()));
             }
         }
