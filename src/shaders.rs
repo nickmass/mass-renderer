@@ -56,6 +56,7 @@ pub struct DefaultShader {
     uv: M3,
     norm: M3,
     ndc_coords: M3,
+    shadow_coords: M3,
 }
 
 impl DefaultShader {
@@ -70,6 +71,7 @@ impl DefaultShader {
             uv: M3::identity(),
             norm: M3::identity(),
             ndc_coords: M3::identity(),
+            shadow_coords: M3::identity(),
         }
     }
 }
@@ -77,14 +79,14 @@ impl DefaultShader {
 impl Shader for DefaultShader {
     fn prepare(&mut self, ctx: &RenderContext) {
         self.transform = ctx.viewport * ctx.projection * ctx.modelview;
-        self.light_matrix = self.light_matrix * self.transform.invert().unwrap();
         self.pm = ctx.projection * ctx.modelview;
-        self.pm_t = self.pm.transpose().invert().unwrap_or(M4::identity());
+        self.pm_t = self.pm.transpose().invert().unwrap();
     }
 
     fn vertex(&mut self, _ctx: &RenderContext, face: &Face, vert: usize) -> V4 {
         self.uv[vert] = face.texs[vert].extend(1.);
         self.norm[vert] = (self.pm_t * face.norms[vert].extend(0.)).truncate();
+        self.shadow_coords[vert] = matrix_transform(face.verts[vert], self.light_matrix);
 
         let next_vert = self.transform * face.verts[vert].extend(1.);
         self.ndc_coords[vert] = (next_vert / next_vert.w).truncate();
@@ -96,18 +98,20 @@ impl Shader for DefaultShader {
         let norm = (self.norm * coords).normalize();
         let uv = (self.uv * coords).truncate();
 
-        /*
-        let shadow_c = matrix_transform(self.ndc_coords * coords, self.light_matrix);
+        let shadow_c = self.shadow_coords * coords;
 
-        let _shadow = self.light_depth.get(shadow_c.x as u32,
-                                           shadow_c.y as u32) < shadow_c.z {
-            1.0
-        } else {
-            0.3
-        };
-        */
+        let shadow = if self.light_depth.is_in_bounds(shadow_c.x as u32, shadow_c.y as u32)
+            && shadow_c.x >= 0. && shadow_c.y >= 0. {
+                if self.light_depth.get(shadow_c.x as u32,
+                                        shadow_c.y as u32) < shadow_c.z + 0.01 {
+                    1.0
+                } else {
+                    0.3
 
-        let shadow = 1.;
+                }
+            } else {
+                0.3
+            };
 
         let a = M3::from_cols(
             self.ndc_coords[1] - self.ndc_coords[0],
@@ -131,11 +135,13 @@ impl Shader for DefaultShader {
         let r = ((n * n.dot(l * 2.)) - l).normalize();
         let diffuse = n.dot(l).max(0.0);
         let specular = r.z.max(0.0).powf(ctx.model.specular(uv));
-        let c = ctx.model.diffuse(uv).truncate();
-        let mut c = c * (diffuse + 0.6 * specular) * shadow;
+        let c = ctx.model.diffuse(uv);
+        if c.w <= 0.0 { return None; }
+        let mut c = c.truncate() * (diffuse + 0.6 * specular) * shadow;
         for i in 0..3 {
             c[i] = (c[i] + 0.02).min(1.);
         }
+
         Some(c)
     }
 }

@@ -127,6 +127,7 @@ impl Renderer {
                 });
             }
         }
+
     }
 
     pub fn viewport(&mut self, x: f64, y: f64, width: f64, height: f64) {
@@ -261,6 +262,10 @@ impl<T> Surface<T> {
         if ind < self.pixels.len() {
             self.pixels[ind] = color;
         }
+    }
+
+    pub fn is_in_bounds(&self, x: u32, y: u32) -> bool {
+        x < self.width() && y < self.height()
     }
 }
 
