@@ -103,7 +103,7 @@ impl Shader for DefaultShader {
         let shadow = if self.light_depth.is_in_bounds(shadow_c.x as u32, shadow_c.y as u32)
             && shadow_c.x >= 0. && shadow_c.y >= 0. {
                 if self.light_depth.get(shadow_c.x as u32,
-                                        shadow_c.y as u32) < shadow_c.z + 0.01 {
+                                        shadow_c.y as u32) < shadow_c.z + 0.02 {
                     1.0
                 } else {
                     0.3
