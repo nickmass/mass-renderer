@@ -1,4 +1,4 @@
-use ::renderer::Surface;
+use ::renderer::{ Surface, Texture };
 use ::{
     ElementWise,
     V2,
@@ -19,9 +19,9 @@ pub struct Model {
     verts: Vec<V3>,
     uvs: Vec<V2>,
     norms: Vec<V3>,
-    diffuse: Surface<V4>,
-    specular: Surface<V4>,
-    normal: Surface<V4>,
+    diffuse: Texture<V4>,
+    specular: Texture<V4>,
+    normal: Texture<V4>,
 }
 
 use ::std::path::Path;
@@ -153,9 +153,9 @@ impl Model {
             verts: verts,
             uvs: uvs,
             norms: norms,
-            diffuse: Surface::from_file(diffuse),
-            specular: Surface::from_file(specular),
-            normal: Surface::from_file(normal),
+            diffuse: Texture::from_file(diffuse),
+            specular: Texture::from_file(specular),
+            normal: Texture::from_file(normal),
         }
     }
 

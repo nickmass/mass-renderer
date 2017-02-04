@@ -14,8 +14,8 @@ use ::{
 };
 
 pub struct Renderer {
-    display_buf: Surface<V3>,
-    z_buf: Surface<f64>,
+    display_buf: Texture<V3>,
+    z_buf: Texture<f64>,
     width: u32,
     height: u32,
     pub viewport: M4,
@@ -26,8 +26,8 @@ pub struct Renderer {
 impl Renderer {
     pub fn new(width: u32, height: u32) -> Renderer {
         Renderer {
-            display_buf: Surface::new(width, height, v3(0.,0.,0.)),
-            z_buf: Surface::new(width, height, ::std::f64::MIN),
+            display_buf: Texture::new(width, height, v3(0.,0.,0.)),
+            z_buf: Texture::new(width, height, ::std::f64::MIN),
             width: width,
             height: height,
             viewport: M4::identity(),
@@ -36,17 +36,17 @@ impl Renderer {
         }
     }
 
-    pub fn display_buffer<'a>(&'a self) -> &'a Surface<V3> {
+    pub fn display_buffer<'a>(&'a self) -> &'a Texture<V3> {
         &self.display_buf
     }
 
-    pub fn z_buffer<'a>(&'a self) -> &'a Surface<f64> {
+    pub fn z_buffer<'a>(&'a self) -> &'a Texture<f64> {
         &self.z_buf
     }
 
     pub fn clear(&mut self, color: V3) {
-        self.display_buf = Surface::new(self.width, self.height, color);
-        self.z_buf = Surface::new(self.width, self.height, ::std::f64::MIN);
+        self.display_buf = Texture::new(self.width, self.height, color);
+        self.z_buf = Texture::new(self.width, self.height, ::std::f64::MIN);
     }
 
     pub fn render<S: Shader>(&mut self, shader: &mut S, model: &Model) {
@@ -71,7 +71,6 @@ impl Renderer {
         let points: Vec<V4> = (0..3)
             .map(|i| shader.vertex(ctx, face, i))
             .collect();
-
 
         let points_z = v3(
             points[0].z,
@@ -127,7 +126,6 @@ impl Renderer {
                 });
             }
         }
-
     }
 
     pub fn viewport(&mut self, x: f64, y: f64, width: f64, height: f64) {
@@ -247,46 +245,22 @@ pub trait Shader {
 }
 
 #[derive(Clone)]
-pub struct Surface<T> {
+pub struct Texture<T> {
     pixels: Vec<T>,
     width: u32,
     height: u32,
 }
 
-impl<T> Surface<T> {
-    pub fn width(&self) -> u32 { self.width }
-    pub fn height(&self) -> u32 { self.height }
-
-    fn set(&mut self, x: u32, y: u32, color: T) {
-        let ind = ((y * self.width) + x) as usize;
-        if ind < self.pixels.len() {
-            self.pixels[ind] = color;
-        }
-    }
-
-    pub fn is_in_bounds(&self, x: u32, y: u32) -> bool {
-        x < self.width() && y < self.height()
-    }
-}
-
-impl<T: Copy> Surface<T> {
-    pub fn new(w: u32, h: u32, default: T) -> Surface<T> {
+impl<T: Copy> Texture<T> {
+    pub fn new(w: u32, h: u32, default: T) -> Texture<T> {
         let mut pixels = Vec::with_capacity((w * h) as usize);
         pixels.resize((w * h) as usize, default);
 
-        Surface {
+        Texture {
             pixels: pixels,
             width: w,
             height: h,
         }
-    }
-
-    pub fn get(&self, x: u32, y: u32) -> T {
-        self.pixels[((y * self.width) + x) as usize]
-    }
-
-    pub fn get_f(&self, x: f64, y: f64) -> T {
-        self.get((x*(self.width - 1) as f64) as u32, (y*(self.height - 1) as f64) as u32)
     }
 
     pub fn line(&mut self, x0: u32, y0: u32, x1: u32, y1: u32, color: T) {
@@ -324,8 +298,8 @@ impl<T: Copy> Surface<T> {
     }
 }
 
-impl Surface<V4> {
-    pub fn from_file<P: AsRef<::std::path::Path>>(path: P) -> Surface<V4> {
+impl Texture<V4> {
+    pub fn from_file<P: AsRef<::std::path::Path>>(path: P) -> Texture<V4> {
         use image::Pixel;
         let img = image::open(path).unwrap().to_rgba();
         let (width, height) = img.dimensions();
@@ -334,11 +308,11 @@ impl Surface<V4> {
             for x in 0..width {
                 let (r,g,b,a) = img.get_pixel(x, y).channels4();
                 let c = v4(r as f64 / 255., g as f64 / 255., b as f64 / 255., a as f64 / 255.);
-                pixels.push(c);
+                pixels.push(c.into());
             }
         }
 
-        Surface {
+        Texture {
             pixels: pixels,
             width: width,
             height: height,
@@ -346,11 +320,7 @@ impl Surface<V4> {
     }
 }
 
-pub trait WriteSurface {
-    fn write<P: AsRef<::std::path::Path>>(&self, path: P) -> ::std::io::Result<()>;
-}
-
-impl<T: Into<Color> + Clone + Copy> WriteSurface for Surface<T> {
+impl<T: Into<Color> + Clone + Copy> Texture<T> {
     fn write<P: AsRef<::std::path::Path>>(&self, path: P) -> ::std::io::Result<()> {
         use image::{Pixel, ImageBuffer, ImageRgba8, Rgba, imageops};
         let mut buf = ImageBuffer::new(self.width, self.height);
@@ -364,6 +334,81 @@ impl<T: Into<Color> + Clone + Copy> WriteSurface for Surface<T> {
         let mut file = try!(::std::fs::File::create(path));
         let _ = ImageRgba8(buf).save(&mut file, image::PNG);
         Ok(())
+    }
+}
+
+impl<T: Copy> Surface for Texture<T> {
+    type Item = T;
+    fn width(&self) -> u32 { self.width }
+    fn height(&self) -> u32 { self.height }
+
+    fn get(&self, x: u32, y: u32) -> T {
+        self.pixels[((y * self.width) + x) as usize]
+    }
+
+    fn get_f(&self, x: f64, y: f64) -> T {
+        self.get((x*(self.width - 1) as f64) as u32, (y*(self.height - 1) as f64) as u32)
+    }
+
+    fn set(&mut self, x: u32, y: u32, color: T) {
+        let ind = ((y * self.width) + x) as usize;
+        if ind < self.pixels.len() {
+            self.pixels[ind] = color;
+        }
+    }
+}
+
+pub trait Surface {
+    type Item;
+    fn width(&self) -> u32;
+    fn height(&self) -> u32;
+    fn get(&self, x: u32, y: u32) -> Self::Item;
+    fn get_f(&self, x: f64, y: f64) -> Self::Item;
+    fn set(&mut self, x: u32, y: u32, value: Self::Item);
+}
+
+pub struct BilinearSampler<T> {
+    inner: T,
+}
+
+impl<T: Surface> BilinearSampler<T> {
+    pub fn new(image: T) -> BilinearSampler<T> {
+        BilinearSampler {
+            inner: image
+        }
+    }
+}
+
+impl<T: Surface<Item=U>, U: ::std::ops::Mul<f64, Output=U> + ::std::ops::Add<U, Output=U>> Surface for BilinearSampler<T> {
+    type Item = T::Item;
+    fn width(&self) -> u32 { self.inner.width() }
+    fn height(&self) -> u32 { self.inner.height() }
+    fn get(&self, x: u32, y: u32) -> T::Item {
+        self.inner.get(x, y)
+    }
+    fn get_f(&self, x: f64, y: f64) -> T::Item {
+        let x = x.max(0.0).min(1.0) * (self.width() - 1) as f64;
+        let y = y.max(0.0).min(1.0) * (self.height() - 1) as f64;
+        let x0 = x.floor();
+        let x1 = x.ceil();
+        let y0 = y.floor();
+        let y1 = y.ceil();
+
+        let t = x - x0;
+        let v0 = self.inner.get(x0 as u32, y0 as u32);
+        let v1 = self.inner.get(x1 as u32, y0 as u32);
+        let r0 =  v0 * (1. - t) + v1 * t;
+
+        let v0 = self.inner.get(x0 as u32, y1 as u32);
+        let v1 = self.inner.get(x1 as u32, y1 as u32);
+        let r1 =  v0 * (1. - t) + v1 * t;
+
+        let t = y - y0;
+
+        r0 * (1. - t) + r1 * t
+    }
+    fn set(&mut self, x: u32, y: u32, value: T::Item) {
+        self.inner.set(x, y, value);
     }
 }
 
@@ -401,6 +446,61 @@ impl Color {
     pub fn r(&self) -> u8 { self.red }
     pub fn g(&self) -> u8 { self.green }
     pub fn b(&self) -> u8 { self.blue }
+
+    pub fn to_linear(self) -> Color {
+        let a = self.a() as f64 / 255.;
+        let mut c: V3 = self.into();
+
+        for i in 0..3 {
+            c[i] = if c[i] <= 0.04045 {
+                c[i] / 12.92
+            } else {
+                ((c[i] + 0.055) / 1.055).powf(2.4)
+            };
+
+            c[i] = c[i].max(0.0).min(1.0);
+        }
+
+        Color::from_argb_f(a, c.x, c.y, c.z)
+    }
+
+    pub fn to_srgb(self) -> Color {
+        let a = self.a() as f64 / 255.;
+        let mut c: V3 = self.into();
+
+        for i in 0..3 {
+            c[i] = if c[i] <= 0.0031308 {
+                12.92 * c[i]
+            } else {
+                1.055 * c[i].powf(0.41666) - 0.055
+            };
+
+            c[i] = c[i].max(0.0).min(1.0);
+        }
+
+        Color::from_argb_f(a, c.x, c.y, c.z)
+    }
+}
+
+impl From<Color> for V3 {
+    fn from(c: Color) -> V3 {
+        v3(
+            c.r() as f64 / 255.0,
+            c.g() as f64 / 255.0,
+            c.b() as f64 / 255.0
+        )
+    }
+}
+
+impl From<Color> for V4 {
+    fn from(c: Color) -> V4 {
+        v4(
+            c.r() as f64 / 255.0,
+            c.g() as f64 / 255.0,
+            c.b() as f64 / 255.0,
+            c.a() as f64 / 255.0
+        )
+    }
 }
 
 impl From<f64> for Color {

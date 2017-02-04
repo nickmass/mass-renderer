@@ -25,7 +25,7 @@ type M3 = Matrix3<f64>;
 type M4 = Matrix4<f64>;
 
 pub mod renderer;
-use renderer::{Renderer, WriteSurface};
+use renderer::{Renderer};
 
 pub mod shaders;
 use shaders::{SolidShader, DefaultShader, DepthShader};

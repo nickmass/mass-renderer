@@ -9,7 +9,7 @@ use ::{
     InnerSpace,
 };
 
-use ::renderer::{Shader, RenderContext, Surface, matrix_transform};
+use ::renderer::{BilinearSampler, Surface, Shader, RenderContext, Texture, matrix_transform};
 use ::model::Face;
 
 pub struct SolidShader {
@@ -48,7 +48,7 @@ impl Shader for SolidShader {
 
 pub struct DefaultShader {
     light_dir: V3,
-    light_depth: Surface<f64>,
+    light_depth: BilinearSampler<Texture<f64>>,
     light_matrix: M4,
     transform: M4,
     pm: M4,
@@ -60,10 +60,10 @@ pub struct DefaultShader {
 }
 
 impl DefaultShader {
-    pub fn new(light_dir: V3, light_depth: Surface<f64>, light_matrix: M4) -> DefaultShader {
+    pub fn new(light_dir: V3, light_depth: Texture<f64>, light_matrix: M4) -> DefaultShader {
         DefaultShader {
             light_dir: light_dir.normalize(),
-            light_depth: light_depth,
+            light_depth: BilinearSampler::new(light_depth),
             light_matrix: light_matrix,
             transform: M4::identity(),
             pm: M4::identity(),
@@ -99,19 +99,14 @@ impl Shader for DefaultShader {
         let uv = (self.uv * coords).truncate();
 
         let shadow_c = self.shadow_coords * coords;
+        let (x ,y) = (shadow_c.x / (self.light_depth.width() - 1) as f64,
+                      shadow_c.y / (self.light_depth.height() - 1) as f64);
 
-        let shadow = if self.light_depth.is_in_bounds(shadow_c.x as u32, shadow_c.y as u32)
-            && shadow_c.x >= 0. && shadow_c.y >= 0. {
-                if self.light_depth.get(shadow_c.x as u32,
-                                        shadow_c.y as u32) < shadow_c.z + 0.02 {
-                    1.0
-                } else {
-                    0.3
-
-                }
-            } else {
-                0.3
-            };
+        let shadow = if self.light_depth.get_f(x, y) < shadow_c.z + 0.02 {
+            1.0
+        } else {
+            0.3
+        };
 
         let a = M3::from_cols(
             self.ndc_coords[1] - self.ndc_coords[0],
