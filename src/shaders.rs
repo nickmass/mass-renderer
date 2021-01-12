@@ -1,16 +1,7 @@
-use ::{
-    V3,
-    V4,
-    M3,
-    M4,
-    v3,
-    Matrix,
-    SquareMatrix,
-    InnerSpace,
-};
+use crate::{v3, InnerSpace, Matrix, SquareMatrix, M3, M4, V3, V4};
 
-use ::renderer::{BilinearSampler, Surface, Shader, RenderContext, Texture, matrix_transform};
-use ::model::Face;
+use crate::model::Face;
+use crate::renderer::{matrix_transform, BilinearSampler, RenderContext, Shader, Surface, Texture};
 
 pub struct SolidShader {
     light_dir: V3,
@@ -35,13 +26,12 @@ impl Shader for SolidShader {
 
     fn vertex(&mut self, _ctx: &RenderContext, face: &Face, vert: usize) -> V4 {
         self.intensity[vert] = face.norms[vert].dot(self.light_dir);
-        self.transform * face.verts[vert].extend(1.)
-
+        self.transform * face.verts[vert].extend(1.0)
     }
 
     fn fragment(&mut self, _ctx: &RenderContext, coords: V3) -> Option<V3> {
         let intensity = self.intensity.dot(coords).max(0.0);
-        let c = v3(1.,1.,1.) * intensity;
+        let c = v3(1., 1., 1.) * intensity;
         Some(c)
     }
 }
@@ -64,7 +54,7 @@ impl DefaultShader {
         DefaultShader {
             light_dir: light_dir.normalize(),
             light_depth: BilinearSampler::new(light_depth),
-            light_matrix: light_matrix,
+            light_matrix,
             transform: M4::identity(),
             pm: M4::identity(),
             pm_t: M4::identity(),
@@ -99,8 +89,10 @@ impl Shader for DefaultShader {
         let uv = (self.uv * coords).truncate();
 
         let shadow_c = self.shadow_coords * coords;
-        let (x ,y) = (shadow_c.x / (self.light_depth.width() - 1) as f64,
-                      shadow_c.y / (self.light_depth.height() - 1) as f64);
+        let (x, y) = (
+            shadow_c.x / (self.light_depth.width() - 1) as f64,
+            shadow_c.y / (self.light_depth.height() - 1) as f64,
+        );
 
         let shadow = if self.light_depth.get_f(x, y) < shadow_c.z + 0.02 {
             1.0
@@ -112,17 +104,14 @@ impl Shader for DefaultShader {
             self.ndc_coords[1] - self.ndc_coords[0],
             self.ndc_coords[2] - self.ndc_coords[0],
             norm,
-        ).transpose();
+        )
+        .transpose();
 
         let ai = a.invert().unwrap();
         let i = ai * v3(self.uv[1].x - self.uv[0].x, self.uv[2].x - self.uv[0].x, 0.);
         let j = ai * v3(self.uv[1].y - self.uv[0].y, self.uv[2].y - self.uv[0].y, 0.);
 
-        let b = M3::from_cols(
-            i.normalize(),
-            j.normalize(),
-            norm,
-        );
+        let b = M3::from_cols(i.normalize(), j.normalize(), norm);
 
         let n = (b * ctx.model.normal(uv)).normalize();
 
@@ -131,7 +120,9 @@ impl Shader for DefaultShader {
         let diffuse = n.dot(l).max(0.0);
         let specular = r.z.max(0.0).powf(ctx.model.specular(uv));
         let c = ctx.model.diffuse(uv);
-        if c.w <= 0.0 { return None; }
+        if c.w <= 0.0 {
+            return None;
+        }
         let mut c = c.truncate() * (diffuse + 0.6 * specular) * shadow;
         for i in 0..3 {
             c[i] = (c[i] + 0.02).min(1.);
@@ -163,6 +154,6 @@ impl Shader for DepthShader {
     }
 
     fn fragment(&mut self, _ctx: &RenderContext, _coords: V3) -> Option<V3> {
-        Some(v3(0.,0.,0.,))
+        Some(v3(0., 0., 0.))
     }
 }

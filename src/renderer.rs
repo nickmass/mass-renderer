@@ -1,17 +1,6 @@
-use ::model::{Model, Face};
+use crate::model::{Face, Model};
 
-use ::{
-    V2,
-    V3,
-    V4,
-    M4,
-    v2,
-    v3,
-    v4,
-    SquareMatrix,
-    InnerSpace,
-    image,
-};
+use crate::{image, v2, v3, v4, InnerSpace, SquareMatrix, M4, V2, V3, V4};
 
 pub struct Renderer {
     display_buf: Texture<V3>,
@@ -26,10 +15,10 @@ pub struct Renderer {
 impl Renderer {
     pub fn new(width: u32, height: u32) -> Renderer {
         Renderer {
-            display_buf: Texture::new(width, height, v3(0.,0.,0.)),
+            display_buf: Texture::new(width, height, v3(0., 0., 0.)),
             z_buf: Texture::new(width, height, ::std::f64::MIN),
-            width: width,
-            height: height,
+            width,
+            height,
             viewport: M4::identity(),
             projection: M4::identity(),
             modelview: M4::identity(),
@@ -68,45 +57,49 @@ impl Renderer {
     }
 
     fn triangle<S: Shader>(&mut self, shader: &mut S, ctx: &RenderContext, face: &Face) {
-        let points: Vec<V4> = (0..3)
-            .map(|i| shader.vertex(ctx, face, i))
-            .collect();
+        let points: Vec<V4> = (0..3).map(|i| shader.vertex(ctx, face, i)).collect();
 
-        let points_z = v3(
-            points[0].z,
-            points[1].z,
-            points[2].z,
-        );
+        let points_z = v3(points[0].z, points[1].z, points[2].z);
 
-        let points_w = v3(
-            points[0].w,
-            points[1].w,
-            points[2].w,
-        );
+        let points_w = v3(points[0].w, points[1].w, points[2].w);
 
-        let points: Vec<V3> = points.iter()
-            .map(|p| v3(p.x/p.w, p.y/p.w, p.z/p.w))
+        let points: Vec<V3> = points
+            .iter()
+            .map(|p| v3(p.x / p.w, p.y / p.w, p.z / p.w))
             .collect();
 
         let (bbmin, bbmax) = {
-            let clamp = v2((self.width-1) as f64, (self.height-1) as f64);
-            let range  = (v2(::std::f64::MAX, ::std::f64::MAX), v2(::std::f64::MIN, ::std::f64::MIN));
-            let (min, max) = points.iter().fold(range, |mut a, p|{
-                if p.x < a.0.x { a.0.x = p.x; }
-                if p.y < a.0.y { a.0.y = p.y; }
-                if p.x > a.1.x { a.1.x = p.x; }
-                if p.y > a.1.y { a.1.y = p.y; }
+            let clamp = v2((self.width - 1) as f64, (self.height - 1) as f64);
+            let range = (
+                v2(::std::f64::MAX, ::std::f64::MAX),
+                v2(::std::f64::MIN, ::std::f64::MIN),
+            );
+            let (min, max) = points.iter().fold(range, |mut a, p| {
+                if p.x < a.0.x {
+                    a.0.x = p.x;
+                }
+                if p.y < a.0.y {
+                    a.0.y = p.y;
+                }
+                if p.x > a.1.x {
+                    a.1.x = p.x;
+                }
+                if p.y > a.1.y {
+                    a.1.y = p.y;
+                }
                 a
             });
             (
                 v2((0_f64).max(min.x.floor()), (0_f64).max(min.y.floor())),
-                v2(clamp.x.min(max.x.floor()), clamp.y.min(max.y.floor()))
+                v2(clamp.x.min(max.x.floor()), clamp.y.min(max.y.floor())),
             )
         };
 
         for p in V2Box::new(bbmin, bbmax) {
             let coords = barycentric(&points, &p);
-            if coords.x < 0. || coords.y < 0. || coords.z < 0. { continue; }
+            if coords.x < 0. || coords.y < 0. || coords.z < 0. {
+                continue;
+            }
 
             let clip = v3(
                 coords.x / points_w.x,
@@ -170,20 +163,16 @@ pub fn matrix_transform(v: V3, m: M4) -> V3 {
 }
 
 fn barycentric(tri: &Vec<V3>, p: &V2) -> V3 {
-    let u = v3(
-        tri[2].x - tri[0].x,
-        tri[1].x - tri[0].x,
-        tri[0].x - p.x
-    ).cross(v3(
+    let u = v3(tri[2].x - tri[0].x, tri[1].x - tri[0].x, tri[0].x - p.x).cross(v3(
         tri[2].y - tri[0].y,
         tri[1].y - tri[0].y,
-        tri[0].y - p.y
+        tri[0].y - p.y,
     ));
 
     if u.z.abs() < 1. {
         v3(-1., 1., 1.)
     } else {
-        v3(1. - (u.x+u.y) / u.z, u.y / u.z, u.x / u.z)
+        v3(1. - (u.x + u.y) / u.z, u.y / u.z, u.x / u.z)
     }
 }
 
@@ -201,7 +190,7 @@ impl V2Box {
         if cur.y > end.y {
             cur.y = start.y;
             cur.x += 1.;
-            if cur.x >  end.x {
+            if cur.x > end.x {
                 done = true;
             }
         }
@@ -217,13 +206,15 @@ impl V2Box {
 impl Iterator for V2Box {
     type Item = V2;
     fn next(&mut self) -> Option<Self::Item> {
-        if self.done { return None; }
+        if self.done {
+            return None;
+        }
         let next = self.cur;
         self.cur.y += 1.;
         if self.cur.y > self.end.y {
             self.cur.y = self.start.y;
             self.cur.x += 1.;
-            if self.cur.x >  self.end.x {
+            if self.cur.x > self.end.x {
                 self.done = true;
             }
         }
@@ -257,7 +248,7 @@ impl<T: Copy> Texture<T> {
         pixels.resize((w * h) as usize, default);
 
         Texture {
-            pixels: pixels,
+            pixels,
             width: w,
             height: h,
         }
@@ -306,23 +297,28 @@ impl Texture<V4> {
         let mut pixels = Vec::with_capacity((width * height) as usize);
         for y in 0..height {
             for x in 0..width {
-                let (r,g,b,a) = img.get_pixel(x, y).channels4();
-                let c = v4(r as f64 / 255., g as f64 / 255., b as f64 / 255., a as f64 / 255.);
+                let (r, g, b, a) = img.get_pixel(x, y).channels4();
+                let c = v4(
+                    r as f64 / 255.,
+                    g as f64 / 255.,
+                    b as f64 / 255.,
+                    a as f64 / 255.,
+                );
                 pixels.push(c.into());
             }
         }
 
         Texture {
-            pixels: pixels,
-            width: width,
-            height: height,
+            pixels,
+            width,
+            height,
         }
     }
 }
 
 impl<T: Into<Color> + Clone + Copy> Texture<T> {
     fn write<P: AsRef<::std::path::Path>>(&self, path: P) -> ::std::io::Result<()> {
-        use image::{Pixel, ImageBuffer, ImageRgba8, Rgba, imageops};
+        use image::{imageops, ImageBuffer, ImageRgba8, Pixel, Rgba};
         let mut buf = ImageBuffer::new(self.width, self.height);
 
         for (x, y, p) in buf.enumerate_pixels_mut() {
@@ -331,7 +327,7 @@ impl<T: Into<Color> + Clone + Copy> Texture<T> {
         }
 
         let buf = imageops::flip_vertical(&buf);
-        let mut file = try!(::std::fs::File::create(path));
+        let mut file = ::std::fs::File::create(path)?;
         let _ = ImageRgba8(buf).save(&mut file, image::PNG);
         Ok(())
     }
@@ -339,15 +335,22 @@ impl<T: Into<Color> + Clone + Copy> Texture<T> {
 
 impl<T: Copy> Surface for Texture<T> {
     type Item = T;
-    fn width(&self) -> u32 { self.width }
-    fn height(&self) -> u32 { self.height }
+    fn width(&self) -> u32 {
+        self.width
+    }
+    fn height(&self) -> u32 {
+        self.height
+    }
 
     fn get(&self, x: u32, y: u32) -> T {
         self.pixels[((y * self.width) + x) as usize]
     }
 
     fn get_f(&self, x: f64, y: f64) -> T {
-        self.get((x*(self.width - 1) as f64) as u32, (y*(self.height - 1) as f64) as u32)
+        self.get(
+            (x * (self.width - 1) as f64) as u32,
+            (y * (self.height - 1) as f64) as u32,
+        )
     }
 
     fn set(&mut self, x: u32, y: u32, color: T) {
@@ -373,16 +376,22 @@ pub struct BilinearSampler<T> {
 
 impl<T: Surface> BilinearSampler<T> {
     pub fn new(image: T) -> BilinearSampler<T> {
-        BilinearSampler {
-            inner: image
-        }
+        BilinearSampler { inner: image }
     }
 }
 
-impl<T: Surface<Item=U>, U: ::std::ops::Mul<f64, Output=U> + ::std::ops::Add<U, Output=U>> Surface for BilinearSampler<T> {
+impl<
+        T: Surface<Item = U>,
+        U: ::std::ops::Mul<f64, Output = U> + ::std::ops::Add<U, Output = U>,
+    > Surface for BilinearSampler<T>
+{
     type Item = T::Item;
-    fn width(&self) -> u32 { self.inner.width() }
-    fn height(&self) -> u32 { self.inner.height() }
+    fn width(&self) -> u32 {
+        self.inner.width()
+    }
+    fn height(&self) -> u32 {
+        self.inner.height()
+    }
     fn get(&self, x: u32, y: u32) -> T::Item {
         self.inner.get(x, y)
     }
@@ -397,11 +406,11 @@ impl<T: Surface<Item=U>, U: ::std::ops::Mul<f64, Output=U> + ::std::ops::Add<U, 
         let t = x - x0;
         let v0 = self.inner.get(x0 as u32, y0 as u32);
         let v1 = self.inner.get(x1 as u32, y0 as u32);
-        let r0 =  v0 * (1. - t) + v1 * t;
+        let r0 = v0 * (1. - t) + v1 * t;
 
         let v0 = self.inner.get(x0 as u32, y1 as u32);
         let v1 = self.inner.get(x1 as u32, y1 as u32);
-        let r1 =  v0 * (1. - t) + v1 * t;
+        let r1 = v0 * (1. - t) + v1 * t;
 
         let t = y - y0;
 
@@ -430,7 +439,9 @@ impl Color {
         }
     }
 
-    pub fn from_rgb(r: u8, g: u8, b: u8) -> Color { Self::from_argb(0xff, r, g, b) }
+    pub fn from_rgb(r: u8, g: u8, b: u8) -> Color {
+        Self::from_argb(0xff, r, g, b)
+    }
 
     pub fn from_argb_f(a: f64, r: f64, g: f64, b: f64) -> Color {
         Color {
@@ -440,12 +451,22 @@ impl Color {
             alpha: (a * 255.) as u8,
         }
     }
-    pub fn from_rgb_f(r: f64, g: f64, b: f64) -> Color { Self::from_argb_f(1., r, g, b) }
+    pub fn from_rgb_f(r: f64, g: f64, b: f64) -> Color {
+        Self::from_argb_f(1., r, g, b)
+    }
 
-    pub fn a(&self) -> u8 { self.alpha }
-    pub fn r(&self) -> u8 { self.red }
-    pub fn g(&self) -> u8 { self.green }
-    pub fn b(&self) -> u8 { self.blue }
+    pub fn a(&self) -> u8 {
+        self.alpha
+    }
+    pub fn r(&self) -> u8 {
+        self.red
+    }
+    pub fn g(&self) -> u8 {
+        self.green
+    }
+    pub fn b(&self) -> u8 {
+        self.blue
+    }
 
     pub fn to_linear(self) -> Color {
         let a = self.a() as f64 / 255.;
@@ -487,7 +508,7 @@ impl From<Color> for V3 {
         v3(
             c.r() as f64 / 255.0,
             c.g() as f64 / 255.0,
-            c.b() as f64 / 255.0
+            c.b() as f64 / 255.0,
         )
     }
 }
@@ -498,19 +519,25 @@ impl From<Color> for V4 {
             c.r() as f64 / 255.0,
             c.g() as f64 / 255.0,
             c.b() as f64 / 255.0,
-            c.a() as f64 / 255.0
+            c.a() as f64 / 255.0,
         )
     }
 }
 
 impl From<f64> for Color {
-    fn from(v: f64) -> Color { Color::from_rgb_f(v, v, v) }
+    fn from(v: f64) -> Color {
+        Color::from_rgb_f(v, v, v)
+    }
 }
 
 impl From<V3> for Color {
-    fn from(v: V3) -> Color { Color::from_rgb_f(v.x, v.y, v.z) }
+    fn from(v: V3) -> Color {
+        Color::from_rgb_f(v.x, v.y, v.z)
+    }
 }
 
 impl From<V4> for Color {
-    fn from(v: V4) -> Color { Color::from_argb_f(v.w, v.x, v.y, v.z) }
+    fn from(v: V4) -> Color {
+        Color::from_argb_f(v.w, v.x, v.y, v.z)
+    }
 }
